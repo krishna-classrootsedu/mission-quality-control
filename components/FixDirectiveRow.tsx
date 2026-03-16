@@ -37,7 +37,6 @@ const FixDirectiveRow = memo(function FixDirectiveRow({
 }) {
   const effectiveStatus = localDecision?.status ?? directive.reviewStatus;
   const effectiveComment = localDecision?.comment ?? directive.vinayComment ?? "";
-  const isDecided = effectiveStatus !== "pending";
   const bgClass = localDecision ? "bg-amber-50/50" : ROW_BG[directive.reviewStatus] ?? "";
 
   return (

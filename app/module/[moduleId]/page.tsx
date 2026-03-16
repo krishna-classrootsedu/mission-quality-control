@@ -14,22 +14,22 @@ export default function ModuleDetailPage() {
   const params = useParams();
   const moduleId = params.moduleId as string;
 
-  const module = useQuery(api.modules.detail, { moduleId });
+  const moduleData = useQuery(api.modules.detail, { moduleId });
   const reviewScores = useQuery(
     api.reviewScores.byModule,
-    module ? { moduleId, version: module.version } : "skip"
+    moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
   const directives = useQuery(
     api.fixDirectives.byModule,
-    module ? { moduleId, version: module.version } : "skip"
+    moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
 
   const gatekeeperData = useQuery(
     api.gatekeeperQuery.byModule,
-    module ? { moduleId, version: module.version } : "skip"
+    moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
 
-  if (module === undefined) {
+  if (moduleData === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-gray-400">Loading module...</div>
@@ -37,7 +37,7 @@ export default function ModuleDetailPage() {
     );
   }
 
-  if (module === null) {
+  if (moduleData === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-gray-500">Module not found: {moduleId}</div>
@@ -55,17 +55,17 @@ export default function ModuleDetailPage() {
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">{module.title}</h1>
+              <h1 className="text-lg font-bold text-gray-900">{moduleData.title}</h1>
               <div className="flex items-center gap-2 mt-1">
-                <StageBadge status={module.status} />
-                <span className="text-xs text-gray-400">v{module.version}</span>
-                <span className="text-xs text-gray-400">Grade {module.grade}</span>
+                <StageBadge status={moduleData.status} />
+                <span className="text-xs text-gray-400">v{moduleData.version}</span>
+                <span className="text-xs text-gray-400">Grade {moduleData.grade}</span>
               </div>
             </div>
-            {module.overallPercentage !== null && (
+            {moduleData.overallPercentage !== null && (
               <div className="text-right">
-                <div className="text-3xl font-bold text-gray-900">{module.overallPercentage}%</div>
-                <div className="text-xs text-gray-400">{module.overallScore}/120</div>
+                <div className="text-3xl font-bold text-gray-900">{moduleData.overallPercentage}%</div>
+                <div className="text-xs text-gray-400">{moduleData.overallScore}/120</div>
               </div>
             )}
           </div>
@@ -77,15 +77,15 @@ export default function ModuleDetailPage() {
         {/* Learning Objective */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <h2 className="text-xs font-semibold text-gray-500 mb-1">Learning Objective</h2>
-          <p className="text-sm text-gray-700">{module.learningObjective}</p>
+          <p className="text-sm text-gray-700">{moduleData.learningObjective}</p>
         </div>
 
         {/* Score Summary */}
         <ScoreSummary
-          overallScore={module.overallScore ?? null}
-          overallPercentage={module.overallPercentage ?? null}
-          scoreBand={module.scoreBand ?? null}
-          tier1AllPassed={module.tier1AllPassed ?? null}
+          overallScore={moduleData.overallScore ?? null}
+          overallPercentage={moduleData.overallPercentage ?? null}
+          scoreBand={moduleData.scoreBand ?? null}
+          tier1AllPassed={moduleData.tier1AllPassed ?? null}
           reviewScores={reviewScores ?? []}
         />
 
@@ -100,7 +100,7 @@ export default function ModuleDetailPage() {
           <FixDirectiveTable
             directives={directives}
             moduleId={moduleId}
-            version={module.version}
+            version={moduleData.version}
           />
         )}
       </main>

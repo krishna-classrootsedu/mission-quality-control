@@ -68,7 +68,7 @@ export default function FixDirectiveTable({
     setSaving(true);
     try {
       // Save each decision
-      for (const [id, decision] of decisions) {
+      for (const [id, decision] of Array.from(decisions)) {
         await reviewMutation({
           directiveId: id as Id<"fixDirectives">,
           reviewStatus: decision.status,
