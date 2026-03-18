@@ -9,12 +9,12 @@ import HealthBar from "./HealthBar";
 export default function ModuleCard({ module }: { module: ModuleBoardItem }) {
   return (
     <Link href={`/module/${module.moduleId}`}>
-      <div className="bg-white rounded-lg border border-gray-200/80 p-3.5 hover:shadow-md hover:border-gray-300/80 transition-all cursor-pointer space-y-2.5 group">
+      <div className="bg-white rounded-xl border border-gray-200/80 p-4 hover:shadow-md hover:border-gray-300/80 transition-all cursor-pointer space-y-2.5 group">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 group-hover:text-gray-700 transition-colors">
+          <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 group-hover:text-gray-700 transition-colors">
             {module.title}
           </h3>
-          <span className="text-[10px] font-mono text-gray-300 shrink-0 mt-0.5">v{module.version}</span>
+          <span className="text-[11px] font-mono text-gray-400 shrink-0 mt-0.5">v{module.version}</span>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -49,7 +49,7 @@ export default function ModuleCard({ module }: { module: ModuleBoardItem }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between text-[11px] text-gray-300 pt-0.5">
+        <div className="flex items-center justify-between text-[11px] text-gray-400 pt-0.5">
           <span>Grade {module.grade}</span>
           {module.submittedBy && <span>{module.submittedBy}</span>}
         </div>

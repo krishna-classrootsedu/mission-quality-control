@@ -19,7 +19,7 @@ const LEVEL_STYLES = {
 export default function HealthBar({ updatedAt }: { updatedAt: string }) {
   const { label, level } = getTimeInStage(updatedAt);
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium ${LEVEL_STYLES[level]}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium ${LEVEL_STYLES[level]}`}>
       {label}
     </span>
   );

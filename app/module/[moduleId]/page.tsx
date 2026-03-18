@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import StageBadge from "@/components/StageBadge";
@@ -75,25 +74,18 @@ export default function ModuleDetailPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b border-gray-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+      {/* Sub-header */}
+      <div className="border-b border-gray-200/80 bg-white">
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="flex items-center justify-between py-3">
-            <div className="flex items-center gap-4">
-              <Link href="/board" className="text-gray-300 hover:text-gray-500 transition-colors">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <div>
-                <h1 className="text-[15px] font-semibold text-gray-900 tracking-tight leading-tight">
-                  {moduleData.title}
-                </h1>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <StageBadge status={moduleData.status} />
-                  <span className="text-[11px] text-gray-300 font-mono">v{moduleData.version}</span>
-                  <span className="text-[11px] text-gray-300">Grade {moduleData.grade}</span>
-                </div>
+            <div>
+              <h1 className="text-base font-semibold text-gray-900 tracking-tight leading-tight">
+                {moduleData.title}
+              </h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <StageBadge status={moduleData.status} />
+                <span className="text-[11px] text-gray-400 font-mono">v{moduleData.version}</span>
+                <span className="text-[11px] text-gray-400">Grade {moduleData.grade}</span>
               </div>
             </div>
             {moduleData.overallPercentage != null && (
@@ -102,7 +94,7 @@ export default function ModuleDetailPage() {
                   <div className="text-3xl font-bold text-gray-900 tabular-nums tracking-tight leading-none">
                     {moduleData.overallPercentage}%
                   </div>
-                  <div className="text-[11px] text-gray-300 font-mono mt-0.5">{moduleData.overallScore}/120</div>
+                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">{moduleData.overallScore}/120</div>
                 </div>
                 <ScoreBandBadge band={moduleData.scoreBand ?? null} />
               </div>
@@ -123,7 +115,7 @@ export default function ModuleDetailPage() {
             </TabButton>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Content */}
       <main className="max-w-[1400px] mx-auto px-6 py-4">
@@ -200,7 +192,7 @@ function OverviewContent({
         {/* Tier 1 Gates — the most critical info */}
         <div className="col-span-7 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tier 1 Gates</span>
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Tier 1 Gates</span>
             {moduleData.tier1AllPassed != null && (
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
                 moduleData.tier1AllPassed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
@@ -245,7 +237,7 @@ function OverviewContent({
 
         {/* Review Passes */}
         <div className="col-span-5 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Review Passes</span>
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Review Passes</span>
           {passTotals.length > 0 ? (
             <div className="mt-2.5 space-y-2.5">
               {passTotals.map((p) => {
@@ -259,7 +251,7 @@ function OverviewContent({
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[13px] font-medium text-gray-600">{info.label}</span>
                         <span className="text-[12px] font-mono text-gray-400 tabular-nums">
-                          {p.score}/{p.max} <span className="text-gray-300">({p.pct}%)</span>
+                          {p.score}/{p.max} <span className="text-gray-400">({p.pct}%)</span>
                         </span>
                       </div>
                       <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
@@ -274,7 +266,7 @@ function OverviewContent({
               })}
             </div>
           ) : (
-            <div className="text-sm text-gray-300 mt-3">No reviews yet</div>
+            <div className="text-sm text-gray-400 mt-3">No reviews yet</div>
           )}
         </div>
       </div>
@@ -283,14 +275,14 @@ function OverviewContent({
       <div className="grid grid-cols-12 gap-3">
         {/* Learning Objective */}
         <div className="col-span-5 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Learning Objective</span>
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Learning Objective</span>
           <p className="text-[13px] text-gray-600 leading-relaxed mt-2">{moduleData.learningObjective}</p>
         </div>
 
         {/* Gatekeeper — compact inline */}
         <div className="col-span-7 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gatekeeper Rules</span>
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Gatekeeper Rules</span>
             {gatekeeperData && (
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                 gatekeeperData.passed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
@@ -313,7 +305,7 @@ function OverviewContent({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-300">Not yet checked</p>
+            <p className="text-sm text-gray-400">Not yet checked</p>
           )}
         </div>
       </div>
@@ -338,7 +330,7 @@ function OverviewContent({
                 </div>
                 <div className="flex items-baseline gap-1 mt-1.5">
                   <span className="text-lg font-bold text-gray-900 tabular-nums">{data ? data.score : "\u2014"}</span>
-                  <span className="text-xs text-gray-300 font-mono">/{cat.maxPoints}</span>
+                  <span className="text-xs text-gray-400 font-mono">/{cat.maxPoints}</span>
                 </div>
                 <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden mt-1.5">
                   <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct ?? 0}%` }} />
