@@ -18,6 +18,8 @@ export const pushBatch = internalMutation({
         severity: v.string(),
         scoreImpact: v.optional(v.number()),
         sourcePass: v.string(),
+        directiveType: v.optional(v.string()),
+        priority: v.optional(v.number()),
       })
     ),
     // Denormalized score data to set on module
@@ -52,6 +54,8 @@ export const pushBatch = internalMutation({
         severity: d.severity,
         scoreImpact: d.scoreImpact,
         sourcePass: d.sourcePass,
+        directiveType: d.directiveType,
+        priority: d.priority,
         reviewStatus: "pending",
         agentName: args.agentName,
         createdAt: now,

@@ -23,6 +23,14 @@ export default defineSchema({
     designerComplete: v.optional(v.boolean()),
     teacherComplete: v.optional(v.boolean()),
     studentComplete: v.optional(v.boolean()),
+    sourceFiles: v.optional(v.array(v.object({
+      filename: v.string(),
+      type: v.string(),
+      label: v.string(),
+      afterSpineSlide: v.optional(v.number()),
+      slideCount: v.number(),
+      storageId: v.optional(v.id("_storage")),
+    }))),
     // Metadata
     submittedBy: v.optional(v.string()),
     submittedAt: v.string(),
@@ -66,6 +74,8 @@ export default defineSchema({
     hasAnimation: v.optional(v.boolean()),
     animationSequence: v.optional(v.any()),
     thumbnailStorageId: v.optional(v.id("_storage")),
+    sourceFile: v.optional(v.string()), // "spine" | "A1" | "A2" etc
+    sourceSlideNumber: v.optional(v.number()), // original number in source PPTX
     metadata: v.optional(v.any()),
     agentName: v.string(),
     createdAt: v.string(),
@@ -142,6 +152,8 @@ export default defineSchema({
     severity: v.string(), // "tier1" | "tier2"
     scoreImpact: v.optional(v.number()),
     sourcePass: v.string(), // "designer" | "teacher" | "student" | "integrator"
+    directiveType: v.optional(v.string()), // "fix" | "insert" | "delete". Absent = "fix"
+    priority: v.optional(v.number()), // rank within slide group. Absent = unranked
     reviewStatus: v.string(), // "pending" | "accepted" | "rejected"
     vinayComment: v.optional(v.string()),
     reviewedAt: v.optional(v.string()),
