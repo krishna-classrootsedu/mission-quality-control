@@ -99,7 +99,7 @@ function GateIndicator({ id, name, status, score }: { id: string; name: string; 
   const icons = { pass: "\u2713", fail: "\u2717", pending: "\u2014" };
 
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${styles[status]}`} title={name}>
+    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${styles[status]}`} title={name}>
       <span className="text-[11px] font-bold">{id}</span>
       {score && <span className="text-[10px] font-mono opacity-70">{score}</span>}
       <span className="text-xs">{icons[status]}</span>

@@ -21,7 +21,7 @@ export default function FixDirectiveFilters({
         <button
           key={f.value}
           onClick={() => onFilterChange(f.value)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
             activeFilter === f.value
               ? "bg-gray-900 text-white shadow-sm"
               : "bg-gray-100/80 text-gray-500 hover:bg-gray-200/80 hover:text-gray-700"

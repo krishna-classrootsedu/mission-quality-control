@@ -42,10 +42,10 @@ function CategoryCard({ id, name, score, max, pct, tier }: { id: string; name: s
   const barColor = pct === undefined ? "bg-gray-100" : pct >= 85 ? "bg-emerald-400" : pct >= 70 ? "bg-amber-400" : pct >= 50 ? "bg-orange-400" : "bg-red-400";
 
   return (
-    <div className="border border-gray-200/80 rounded-xl p-3.5 space-y-2 hover:shadow-sm transition-shadow">
+    <div className="border border-gray-200/80 rounded-lg p-4 space-y-2 hover:shadow-sm transition-shadow">
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-gray-500">{id}</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold border ${tierStyle}`}>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${tierStyle}`}>
           {tier === "tier1" ? "T1" : "T2"}
         </span>
       </div>

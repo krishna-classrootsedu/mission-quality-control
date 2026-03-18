@@ -23,7 +23,7 @@ export default function StageBadge({ status }: { status: string }) {
   const style = STATUS_STYLES[status] ?? "bg-gray-100 text-gray-500 border-gray-200";
   const label = STATUS_LABELS[status] ?? status;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${style}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${style}`}>
       {label}
     </span>
   );

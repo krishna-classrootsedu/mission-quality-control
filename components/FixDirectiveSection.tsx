@@ -152,28 +152,28 @@ export default function FixDirectiveSection({
           {/* Sticky header */}
           <thead className="sticky top-0 z-[5]">
             <tr className="bg-gray-50 border-b border-gray-200/80">
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-[52px] bg-gray-50">
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-[52px] bg-gray-50">
                 Slide
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-[64px] bg-gray-50">
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-[64px] bg-gray-50">
                 Type
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50" style={{ width: "20%" }}>
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" style={{ width: "20%" }}>
                 Issue
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50" style={{ width: "20%" }}>
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" style={{ width: "20%" }}>
                 Recommended Fix
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50" style={{ width: "14%" }}>
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" style={{ width: "14%" }}>
                 Why
               </th>
-              <th className="text-center px-2 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-[48px] bg-gray-50">
+              <th className="text-center px-2 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-[48px] bg-gray-50">
                 Priority
               </th>
-              <th className="text-center px-2 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-[90px] bg-gray-50">
+              <th className="text-center px-2 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider w-[90px] bg-gray-50">
                 Decision
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50" style={{ width: "18%" }}>
+              <th className="text-left px-3 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50" style={{ width: "18%" }}>
                 Comment
               </th>
             </tr>
@@ -227,7 +227,7 @@ export default function FixDirectiveSection({
 
                     {/* Type */}
                     <td className="px-3 py-2 align-top">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border whitespace-nowrap ${tc.pillClass}`}>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${tc.pillClass}`}>
                         {tc.label}
                       </span>
                     </td>
