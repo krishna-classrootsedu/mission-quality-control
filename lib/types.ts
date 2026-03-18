@@ -42,6 +42,15 @@ export const SCORE_BANDS = {
 
 export type ScoreBand = keyof typeof SCORE_BANDS;
 
+// Directive types
+export const DIRECTIVE_TYPES = {
+  fix: { label: "Fix", color: "gray", icon: "wrench" },
+  insert: { label: "Insert", color: "blue", icon: "plus" },
+  delete: { label: "Delete", color: "red", icon: "minus" },
+} as const;
+
+export type DirectiveType = keyof typeof DIRECTIVE_TYPES;
+
 // Board item (from getBoard query)
 export type ModuleBoardItem = {
   _id: string;

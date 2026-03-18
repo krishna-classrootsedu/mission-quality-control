@@ -19,6 +19,7 @@ import type * as lib_activityHelper from "../lib/activityHelper.js";
 import type * as modules from "../modules.js";
 import type * as parsedSlides from "../parsedSlides.js";
 import type * as reviewScores from "../reviewScores.js";
+import type * as seed from "../seed.js";
 
 import type {
   ApiFromModules,
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   modules: typeof modules;
   parsedSlides: typeof parsedSlides;
   reviewScores: typeof reviewScores;
+  seed: typeof seed;
 }>;
 
 /**

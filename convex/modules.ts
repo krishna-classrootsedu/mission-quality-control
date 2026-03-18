@@ -236,6 +236,109 @@ export const submitModule = mutation({
   },
 });
 
+// Submit a module with multi-file flow (spine + applets)
+export const submitModuleWithFlow = mutation({
+  args: {
+    title: v.string(),
+    learningObjective: v.string(),
+    grade: v.string(),
+    phase: v.optional(v.string()),
+    topic: v.optional(v.string()),
+    submittedBy: v.string(),
+    sourceFiles: v.array(v.object({
+      filename: v.string(),
+      type: v.string(),
+      label: v.string(),
+      afterSpineSlide: v.optional(v.number()),
+      slideCount: v.number(),
+      storageId: v.optional(v.id("_storage")),
+    })),
+    slides: v.array(v.object({
+      slideNumber: v.number(),
+      sourceFile: v.string(),
+      sourceSlideNumber: v.number(),
+      textContent: v.optional(v.string()),
+      speakerNotes: v.optional(v.string()),
+      layoutType: v.optional(v.string()),
+      hasAnimation: v.optional(v.boolean()),
+      animationSequence: v.optional(v.any()),
+      metadata: v.optional(v.any()),
+      thumbnailStorageId: v.optional(v.id("_storage")),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const now = new Date().toISOString();
+
+    // Generate moduleId from title
+    const slug = args.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40);
+    const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
+
+    // Create module record
+    const totalSlides = args.slides.length;
+    const moduleDocId = await ctx.db.insert("modules", {
+      moduleId,
+      title: args.title,
+      learningObjective: args.learningObjective,
+      grade: args.grade,
+      phase: args.phase,
+      topic: args.topic,
+      slideCount: totalSlides,
+      sourceFiles: args.sourceFiles,
+      status: "intake_complete",
+      version: 1,
+      submittedBy: args.submittedBy,
+      submittedAt: now,
+      updatedAt: now,
+    });
+
+    // Batch-insert parsed slides
+    for (const slide of args.slides) {
+      await ctx.db.insert("parsedSlides", {
+        moduleId,
+        version: 1,
+        slideNumber: slide.slideNumber,
+        sourceFile: slide.sourceFile,
+        sourceSlideNumber: slide.sourceSlideNumber,
+        textContent: slide.textContent,
+        speakerNotes: slide.speakerNotes,
+        layoutType: slide.layoutType,
+        hasAnimation: slide.hasAnimation,
+        animationSequence: slide.animationSequence,
+        metadata: slide.metadata,
+        thumbnailStorageId: slide.thumbnailStorageId,
+        agentName: "upload-ui",
+        createdAt: now,
+      });
+    }
+
+    // Create intake results record
+    await ctx.db.insert("intakeResults", {
+      moduleId,
+      version: 1,
+      slideCount: totalSlides,
+      slideTypes: {},
+      flags: [],
+      agentName: "upload-ui",
+      completedAt: now,
+      dedupKey: `intake-${moduleId}-v1`,
+    });
+
+    await logActivityIfNew(ctx, {
+      agentName: "system",
+      action: "module_submitted_with_flow",
+      message: `Module "${args.title}" submitted with ${args.sourceFiles.length} source file(s), ${totalSlides} slides`,
+      dedupKey: `module-submit-flow-${moduleId}-v1`,
+      metadata: { moduleId, sourceFileCount: args.sourceFiles.length, slideCount: totalSlides },
+    });
+
+    return { id: moduleDocId, moduleId, version: 1, slideCount: totalSlides };
+  },
+});
+
 // Pipeline summary — count modules per status
 export const pipelineSummary = query({
   args: {},
