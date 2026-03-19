@@ -382,45 +382,6 @@ http.route({
 });
 
 // ---------------------------------------------------------------------------
-// PROXY endpoint — frontend sends PPTX here, Convex forwards to VPS parser
-// ---------------------------------------------------------------------------
-
-http.route({
-  path: "/proxy/parse-pptx",
-  method: "POST",
-  handler: httpAction(async (_ctx, request) => {
-    const parserUrl = process.env.PARSER_URL;
-    const parserApiKey = process.env.PARSER_API_KEY;
-    if (!parserUrl || !parserApiKey) {
-      return jsonResponse({ error: "Parser not configured" }, 500);
-    }
-    try {
-      const body = await request.arrayBuffer();
-      const contentType = request.headers.get("Content-Type") || "";
-
-      const parserResponse = await fetch(`${parserUrl}/parse-pptx`, {
-        method: "POST",
-        headers: {
-          "X-API-Key": parserApiKey,
-          "Content-Type": contentType,
-        },
-        body,
-      });
-
-      if (!parserResponse.ok) {
-        const text = await parserResponse.text();
-        return jsonResponse({ error: `Parser error: ${text}` }, parserResponse.status);
-      }
-
-      const parsed = await parserResponse.json();
-      return jsonResponse(parsed);
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }),
-});
-
-// ---------------------------------------------------------------------------
 // CORS preflight for all routes
 // ---------------------------------------------------------------------------
 
@@ -434,7 +395,6 @@ const allPaths = [
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
   "/query/review-scores", "/query/recommendations", "/query/flow-map",
   "/query/pipeline-summary", "/query/activity",
-  "/proxy/parse-pptx",
 ];
 
 for (const path of allPaths) {
