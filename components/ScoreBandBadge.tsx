@@ -3,6 +3,9 @@
 const BAND_STYLES: Record<string, string> = {
   ship_ready: "bg-emerald-50 text-emerald-700 border-emerald-200",
   upgradeable: "bg-amber-50 text-amber-700 border-amber-200",
+  rework: "bg-orange-50 text-orange-700 border-orange-200",
+  redesign: "bg-red-50 text-red-700 border-red-200",
+  // Fallbacks for old band names (won't crash if old data comes through)
   re_architect: "bg-orange-50 text-orange-700 border-orange-200",
   reframe: "bg-red-50 text-red-700 border-red-200",
 };
@@ -10,6 +13,8 @@ const BAND_STYLES: Record<string, string> = {
 const BAND_LABELS: Record<string, string> = {
   ship_ready: "Ship-ready",
   upgradeable: "Upgradeable",
+  rework: "Rework",
+  redesign: "Redesign",
   re_architect: "Re-architect",
   reframe: "Reframe",
 };

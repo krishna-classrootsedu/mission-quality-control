@@ -6,10 +6,12 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import StageBadge from "@/components/StageBadge";
 import ScoreBandBadge from "@/components/ScoreBandBadge";
-import FixDirectiveSection from "@/components/FixDirectiveSection";
-import { CATEGORIES } from "@/lib/types";
+import FlowMapTable from "@/components/FlowMapTable";
+import QuadrantScoreDisplay from "@/components/QuadrantScoreDisplay";
+import ComponentScoreSummary from "@/components/ComponentScoreSummary";
+import RecommendationsSection from "@/components/RecommendationsSection";
 
-type Tab = "overview" | "directives";
+type Tab = "overview" | "recommendations";
 
 export default function ModuleDetailPage() {
   const params = useParams();
@@ -21,12 +23,16 @@ export default function ModuleDetailPage() {
     api.reviewScores.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
-  const directives = useQuery(
-    api.fixDirectives.byModule,
+  const recommendations = useQuery(
+    api.recommendations.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
   const gatekeeperData = useQuery(
     api.gatekeeperQuery.byModule,
+    moduleData ? { moduleId, version: moduleData.version } : "skip"
+  );
+  const flowMapData = useQuery(
+    api.flowMap.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
 
@@ -52,25 +58,8 @@ export default function ModuleDetailPage() {
     );
   }
 
-  const directiveCount = directives?.length ?? 0;
-  const pendingCount = directives?.filter((d) => d.reviewStatus === "pending").length ?? 0;
-
-  // Build category map from all review passes
-  const categoryMap = new Map<string, { score: number; max: number }>();
-  const passTotals: { pass: string; score: number; max: number; pct: number }[] = [];
-  if (reviewScores) {
-    for (const rs of reviewScores) {
-      for (const cs of rs.categoryScores) {
-        categoryMap.set(cs.categoryId, { score: cs.score, max: cs.maxPoints });
-      }
-      passTotals.push({
-        pass: rs.reviewPass,
-        score: rs.totalPoints,
-        max: rs.maxPoints,
-        pct: Math.round((rs.totalPoints / rs.maxPoints) * 100),
-      });
-    }
-  }
+  const recCount = recommendations?.length ?? 0;
+  const pendingCount = recommendations?.filter((r) => r.reviewStatus === "pending").length ?? 0;
 
   return (
     <div className="min-h-screen">
@@ -94,7 +83,7 @@ export default function ModuleDetailPage() {
                   <div className="text-3xl font-bold text-gray-900 tabular-nums tracking-tight leading-none">
                     {moduleData.overallPercentage}%
                   </div>
-                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">{moduleData.overallScore}/120</div>
+                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
                 </div>
                 <ScoreBandBadge band={moduleData.scoreBand ?? null} />
               </div>
@@ -106,12 +95,12 @@ export default function ModuleDetailPage() {
               Overview
             </TabButton>
             <TabButton
-              active={activeTab === "directives"}
-              onClick={() => setActiveTab("directives")}
+              active={activeTab === "recommendations"}
+              onClick={() => setActiveTab("recommendations")}
               badge={pendingCount > 0 ? pendingCount : undefined}
             >
-              Fix Directives
-              {directiveCount > 0 && <span className="text-gray-300 ml-1">{directiveCount}</span>}
+              Recommendations
+              {recCount > 0 && <span className="text-gray-300 ml-1">{recCount}</span>}
             </TabButton>
           </div>
         </div>
@@ -122,16 +111,16 @@ export default function ModuleDetailPage() {
         {activeTab === "overview" ? (
           <OverviewContent
             moduleData={moduleData}
-            categoryMap={categoryMap}
-            passTotals={passTotals}
+            reviewScores={reviewScores ?? []}
             gatekeeperData={gatekeeperData ?? null}
+            flowMapData={flowMapData ?? []}
           />
         ) : (
-          directives && directives.length > 0 ? (
-            <FixDirectiveSection directives={directives} moduleId={moduleId} version={moduleData.version} />
+          recommendations && recommendations.length > 0 ? (
+            <RecommendationsSection recommendations={recommendations} moduleId={moduleId} version={moduleData.version} />
           ) : (
             <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-12 text-center">
-              <p className="text-sm text-gray-400">No fix directives yet</p>
+              <p className="text-sm text-gray-400">No recommendations yet</p>
             </div>
           )
         )}
@@ -140,7 +129,7 @@ export default function ModuleDetailPage() {
   );
 }
 
-/* ─── Tab Button ─── */
+/* --- Tab Button --- */
 function TabButton({ active, onClick, badge, children }: {
   active: boolean; onClick: () => void; badge?: number; children: React.ReactNode;
 }) {
@@ -157,121 +146,53 @@ function TabButton({ active, onClick, badge, children }: {
   );
 }
 
-/* ─── Overview — Single-fold dashboard ─── */
+/* --- Overview --- */
 
-const TIER1_THRESHOLD = 0.7;
-const PASS_LABELS: Record<string, { label: string; icon: string }> = {
-  designer: { label: "Designer", icon: "D" },
-  teacher: { label: "Teacher", icon: "T" },
-  student: { label: "Student", icon: "S" },
+type ReviewScoreRow = {
+  reviewPass: string;
+  quadrantScores: Array<{
+    quadrantId: string;
+    quadrantName: string;
+    maxPoints: number;
+    score: number;
+    criteriaScores: Array<{
+      criterionId: string;
+      criterionName: string;
+      maxPoints: number;
+      score: number;
+      type?: string;
+      evidence?: string;
+      slideNumbers?: number[];
+    }>;
+  }>;
+  totalPoints: number;
+  maxPoints: number;
+};
+
+type GatekeeperResult = {
+  passed: boolean;
+  ruleResults: { ruleId: string; ruleName: string; passed: boolean; evidence?: string; slideNumbers?: number[] }[];
 };
 
 function OverviewContent({
   moduleData,
-  categoryMap,
-  passTotals,
+  reviewScores,
   gatekeeperData,
+  flowMapData,
 }: {
   moduleData: {
     learningObjective: string;
-    tier1AllPassed?: boolean;
+    overallScore?: number;
+    overallPercentage?: number;
+    scoreBand?: string;
   };
-  categoryMap: Map<string, { score: number; max: number }>;
-  passTotals: { pass: string; score: number; max: number; pct: number }[];
-  gatekeeperData: {
-    passed: boolean;
-    ruleResults: { ruleId: string; ruleName: string; passed: boolean; evidence?: string }[];
-  } | null;
+  reviewScores: ReviewScoreRow[];
+  gatekeeperData: GatekeeperResult | null;
+  flowMapData: React.ComponentProps<typeof FlowMapTable>["steps"];
 }) {
-  const tier1Cats = CATEGORIES.filter((c) => c.tier === "tier1");
-
   return (
     <div className="space-y-3">
-      {/* Row 1: Tier 1 Gates + Review Passes */}
-      <div className="grid grid-cols-12 gap-3">
-        {/* Tier 1 Gates — the most critical info */}
-        <div className="col-span-7 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Tier 1 Gates</span>
-            {moduleData.tier1AllPassed != null && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
-                moduleData.tier1AllPassed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
-              }`}>
-                {moduleData.tier1AllPassed ? "All passed" : "Below threshold"}
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {tier1Cats.map((cat) => {
-              const data = categoryMap.get(cat.id);
-              const pct = data ? data.score / data.max : 0;
-              const passed = data ? pct >= TIER1_THRESHOLD : false;
-              const status = data ? (passed ? "pass" : "fail") : "pending";
-              return (
-                <div
-                  key={cat.id}
-                  className={`rounded-lg border px-2.5 py-2 ${
-                    status === "pass" ? "border-emerald-200 bg-emerald-50/40"
-                      : status === "fail" ? "border-red-200 bg-red-50/40"
-                      : "border-gray-200 bg-gray-50/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-gray-500 leading-tight line-clamp-1">{cat.name}</span>
-                    <span className={`text-[10px] ml-1 shrink-0 ${
-                      status === "pass" ? "text-emerald-500" : status === "fail" ? "text-red-400" : "text-gray-300"
-                    }`}>
-                      {status === "pass" ? "\u2713" : status === "fail" ? "\u2717" : ""}
-                    </span>
-                  </div>
-                  <div className={`text-[13px] font-bold tabular-nums mt-0.5 ${
-                    status === "pass" ? "text-emerald-600" : status === "fail" ? "text-red-500" : "text-gray-300"
-                  }`}>
-                    {data ? `${data.score}/${data.max}` : "\u2014"}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Review Passes */}
-        <div className="col-span-5 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Review Passes</span>
-          {passTotals.length > 0 ? (
-            <div className="mt-2.5 space-y-2.5">
-              {passTotals.map((p) => {
-                const info = PASS_LABELS[p.pass] || { label: p.pass, icon: "?" };
-                return (
-                  <div key={p.pass} className="flex items-center gap-3">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                      p.pct >= 70 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    }`}>{info.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[13px] font-medium text-gray-600">{info.label}</span>
-                        <span className="text-[12px] font-mono text-gray-400 tabular-nums">
-                          {p.score}/{p.max} <span className="text-gray-400">({p.pct}%)</span>
-                        </span>
-                      </div>
-                      <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${p.pct >= 85 ? "bg-emerald-400" : p.pct >= 70 ? "bg-amber-400" : "bg-red-400"}`}
-                          style={{ width: `${p.pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-400 mt-3">No reviews yet</div>
-          )}
-        </div>
-      </div>
-
-      {/* Row 2: LO + Gatekeeper */}
+      {/* Row 1: LO + Gatekeeper */}
       <div className="grid grid-cols-12 gap-3">
         {/* Learning Objective */}
         <div className="col-span-5 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
@@ -279,7 +200,7 @@ function OverviewContent({
           <p className="text-[13px] text-gray-600 leading-relaxed mt-2">{moduleData.learningObjective}</p>
         </div>
 
-        {/* Gatekeeper — compact inline */}
+        {/* Gatekeeper */}
         <div className="col-span-7 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Gatekeeper Rules</span>
@@ -292,7 +213,7 @@ function OverviewContent({
             )}
           </div>
           {gatekeeperData ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-1">
               {gatekeeperData.ruleResults.map((rule) => (
                 <div key={rule.ruleId} className="flex items-center gap-2 py-0.5">
                   <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
@@ -310,36 +231,21 @@ function OverviewContent({
         </div>
       </div>
 
-      {/* Row 3: All 12 categories */}
-      <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">All 12 Categories</span>
-        <div className="grid grid-cols-6 gap-2.5 mt-3">
-          {CATEGORIES.map((cat) => {
-            const data = categoryMap.get(cat.id);
-            const pct = data ? Math.round((data.score / data.max) * 100) : undefined;
-            const barColor = pct === undefined ? "bg-gray-100" : pct >= 85 ? "bg-emerald-400" : pct >= 70 ? "bg-amber-400" : pct >= 50 ? "bg-orange-400" : "bg-red-400";
-            return (
-              <div key={cat.id} className="border border-gray-100 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-gray-500 leading-snug line-clamp-1 flex-1">{cat.name}</span>
-                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded ml-1.5 shrink-0 ${
-                    cat.tier === "tier1" ? "bg-red-50 text-red-400" : "bg-gray-50 text-gray-300"
-                  }`}>
-                    {cat.tier === "tier1" ? "T1" : "T2"}
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-1 mt-1.5">
-                  <span className="text-lg font-bold text-gray-900 tabular-nums">{data ? data.score : "\u2014"}</span>
-                  <span className="text-xs text-gray-400 font-mono">/{cat.maxPoints}</span>
-                </div>
-                <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden mt-1.5">
-                  <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct ?? 0}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* Row 2: Flow Map */}
+      {flowMapData.length > 0 && (
+        <FlowMapTable steps={flowMapData} />
+      )}
+
+      {/* Row 3: Component Score Summary */}
+      <ComponentScoreSummary
+        overallScore={moduleData.overallScore ?? null}
+        overallPercentage={moduleData.overallPercentage ?? null}
+        scoreBand={moduleData.scoreBand ?? null}
+        reviewScores={reviewScores}
+      />
+
+      {/* Row 4: Quadrant Scores */}
+      <QuadrantScoreDisplay reviewScores={reviewScores} />
     </div>
   );
 }

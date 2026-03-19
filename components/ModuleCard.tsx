@@ -31,20 +31,27 @@ export default function ModuleCard({ module }: { module: ModuleBoardItem }) {
           </div>
         )}
 
-        {module.column === "In Review" && (
+        {/* Spine + applet completion indicators */}
+        {(module.spineComplete || module.totalApplets > 0) && (
           <div className="flex gap-1.5">
-            <PassDot label="D" done={module.designerComplete} />
-            <PassDot label="T" done={module.teacherComplete} />
-            <PassDot label="S" done={module.studentComplete} />
+            <CompletionDot label="S" done={module.spineComplete} title="Spine" />
+            {Array.from({ length: module.totalApplets }, (_, i) => (
+              <CompletionDot
+                key={i}
+                label={`A${i + 1}`}
+                done={i < module.completedAppletReviews}
+                title={`Applet ${i + 1}`}
+              />
+            ))}
           </div>
         )}
 
-        {module.directiveCounts && (
+        {module.recommendationCounts && (
           <div className="text-[11px] text-gray-400">
-            {module.directiveCounts.pending > 0 ? (
-              <span>{module.directiveCounts.pending} pending / {module.directiveCounts.total} directives</span>
+            {module.recommendationCounts.pending > 0 ? (
+              <span>{module.recommendationCounts.pending} pending / {module.recommendationCounts.total} recommendations</span>
             ) : (
-              <span className="text-emerald-500">All {module.directiveCounts.total} reviewed</span>
+              <span className="text-emerald-500">All {module.recommendationCounts.total} reviewed</span>
             )}
           </div>
         )}
@@ -58,11 +65,14 @@ export default function ModuleCard({ module }: { module: ModuleBoardItem }) {
   );
 }
 
-function PassDot({ label, done }: { label: string; done: boolean }) {
+function CompletionDot({ label, done, title }: { label: string; done: boolean; title: string }) {
   return (
-    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${
-      done ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-300"
-    }`}>
+    <span
+      title={title}
+      className={`inline-flex items-center justify-center px-1.5 h-5 rounded-full text-[10px] font-bold transition-colors ${
+        done ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-300"
+      }`}
+    >
       {label}
     </span>
   );

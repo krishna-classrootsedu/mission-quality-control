@@ -18,11 +18,12 @@ export default defineSchema({
     overallScore: v.optional(v.number()),
     overallPercentage: v.optional(v.number()),
     scoreBand: v.optional(v.string()),
-    tier1AllPassed: v.optional(v.boolean()),
-    // Parallel pass tracking
-    designerComplete: v.optional(v.boolean()),
-    teacherComplete: v.optional(v.boolean()),
-    studentComplete: v.optional(v.boolean()),
+    // Research brief (set by Researcher agent after Flow Mapper)
+    researchBrief: v.optional(v.string()),
+    // Spine/applet completion tracking
+    spineComplete: v.optional(v.boolean()),
+    totalApplets: v.optional(v.number()),
+    completedAppletReviews: v.optional(v.number()),
     sourceFiles: v.optional(v.array(v.object({
       filename: v.string(),
       type: v.string(),
@@ -76,6 +77,7 @@ export default defineSchema({
     thumbnailStorageId: v.optional(v.id("_storage")),
     sourceFile: v.optional(v.string()), // "spine" | "A1" | "A2" etc
     sourceSlideNumber: v.optional(v.number()), // original number in source PPTX
+    morphPairWith: v.optional(v.number()), // slide number of morph partner
     metadata: v.optional(v.any()),
     agentName: v.string(),
     createdAt: v.string(),
@@ -104,24 +106,24 @@ export default defineSchema({
     .index("by_moduleId_version", ["moduleId", "version"])
     .index("by_dedupKey", ["dedupKey"]),
 
-  // Per-hat scoring — 3 rows per module+version
+  // Per-component scoring — spine + applet rows per module+version
   reviewScores: defineTable({
     moduleId: v.string(),
     version: v.number(),
-    reviewPass: v.string(), // "designer" | "teacher" | "student"
-    categoryScores: v.array(
+    reviewPass: v.string(), // "spine" | "applet_1" | "applet_2" etc.
+    quadrantScores: v.array(
       v.object({
-        categoryId: v.string(),
-        categoryName: v.string(),
-        maxPoints: v.number(),
+        quadrantId: v.string(),       // "P" | "D" | "X" | "L"
+        quadrantName: v.string(),     // "Pedagogy" | etc.
+        maxPoints: v.number(),        // 25
         score: v.number(),
-        tier: v.string(),
         criteriaScores: v.array(
           v.object({
-            criterionId: v.string(),
+            criterionId: v.string(),    // "P1", "D3", etc.
             criterionName: v.string(),
-            maxPoints: v.number(),
+            maxPoints: v.number(),      // variable: 2-5
             score: v.number(),
+            type: v.optional(v.string()),       // "presence" | "trace"
             evidence: v.optional(v.string()),
             slideNumbers: v.optional(v.array(v.number())),
           })
@@ -139,22 +141,24 @@ export default defineSchema({
     .index("by_moduleId_version_pass", ["moduleId", "version", "reviewPass"])
     .index("by_dedupKey", ["dedupKey"]),
 
-  // Individual fix directives — Vinay reviews these
-  fixDirectives: defineTable({
+  // Recommendations — Vinay reviews these (replaces fixDirectives)
+  recommendations: defineTable({
     moduleId: v.string(),
     version: v.number(),
     directiveIndex: v.number(),
     slideNumber: v.optional(v.number()),
     issue: v.string(),
-    categoryId: v.string(),
+    quadrantId: v.string(),              // "P" | "D" | "X" | "L" | "GATE"
     recommendedFix: v.string(),
     why: v.optional(v.string()),
-    severity: v.string(), // "tier1" | "tier2"
-    scoreImpact: v.optional(v.number()),
-    sourcePass: v.string(), // "designer" | "teacher" | "student" | "integrator"
-    directiveType: v.optional(v.string()), // "fix" | "insert" | "delete". Absent = "fix"
-    priority: v.optional(v.number()), // rank within slide group. Absent = unranked
-    reviewStatus: v.string(), // "pending" | "accepted" | "rejected"
+    operationType: v.string(),           // "DELETE"|"INSERT"|"EDIT"|"REPLACE"|"ADD"
+    confidence: v.string(),              // "high"|"medium"|"low"
+    sourceAttribution: v.optional(v.string()),
+    component: v.string(),               // "spine"|"applet_1"|"applet_2" etc.
+    pointsRecoverable: v.optional(v.number()),
+    sourcePass: v.string(),
+    priority: v.optional(v.number()),
+    reviewStatus: v.string(),            // "pending"|"accepted"|"rejected"
     vinayComment: v.optional(v.string()),
     reviewedAt: v.optional(v.string()),
     agentName: v.string(),
@@ -163,6 +167,26 @@ export default defineSchema({
     .index("by_moduleId_version", ["moduleId", "version"])
     .index("by_moduleId_version_status", ["moduleId", "version", "reviewStatus"])
     .index("by_reviewStatus", ["reviewStatus"]),
+
+  // Flow map — structural map of module (Flow Mapper agent output)
+  flowMap: defineTable({
+    moduleId: v.string(),
+    version: v.number(),
+    stepIndex: v.number(),
+    type: v.string(),                    // "spine" | "applet"
+    slideRange: v.string(),             // "1-15"
+    concept: v.string(),
+    purpose: v.string(),
+    appletRef: v.optional(v.string()),
+    status: v.string(),                  // "ok" | "flagged"
+    vinayFlag: v.optional(v.string()),
+    flaggedAt: v.optional(v.string()),
+    agentName: v.string(),
+    createdAt: v.string(),
+    dedupKey: v.string(),
+  })
+    .index("by_moduleId_version", ["moduleId", "version"])
+    .index("by_dedupKey", ["dedupKey"]),
 
   // Pipeline event log
   agentActivity: defineTable({

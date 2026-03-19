@@ -39,21 +39,23 @@ export const push = internalMutation({
       dedupKey: args.dedupKey,
     });
 
-    // If gatekeeper fails, auto-generate fix directives from failed rules
+    // If gatekeeper fails, auto-generate recommendations from failed rules
     if (!args.passed) {
       const failedRules = args.ruleResults.filter((r) => !r.passed);
       for (let i = 0; i < failedRules.length; i++) {
         const rule = failedRules[i];
-        await ctx.db.insert("fixDirectives", {
+        await ctx.db.insert("recommendations", {
           moduleId: args.moduleId,
           version: args.version,
           directiveIndex: i,
           slideNumber: rule.slideNumbers?.[0],
-          issue: `Tier 1 dealbreaker: ${rule.ruleName}`,
-          categoryId: "GATEKEEPER",
+          issue: `Dealbreaker: ${rule.ruleName}`,
+          quadrantId: "GATE",
           recommendedFix: `Fix: ${rule.ruleName}. ${rule.evidence ?? ""}`,
-          why: "Tier 1 binary rule — must pass before any scoring can proceed.",
-          severity: "tier1",
+          why: "Binary gate rule — must pass before any scoring can proceed.",
+          operationType: "EDIT",
+          confidence: "high",
+          component: "spine",
           sourcePass: "gatekeeper",
           reviewStatus: "pending",
           agentName: args.agentName,

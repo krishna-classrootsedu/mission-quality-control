@@ -2,30 +2,24 @@ import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew } from "./lib/activityHelper";
 
-const PASS_TO_FIELD = {
-  designer: "designerComplete",
-  teacher: "teacherComplete",
-  student: "studentComplete",
-} as const;
-
 export const push = internalMutation({
   args: {
     moduleId: v.string(),
     version: v.number(),
-    reviewPass: v.string(),
-    categoryScores: v.array(
+    reviewPass: v.string(), // "spine" | "applet_1" | "applet_2" etc.
+    quadrantScores: v.array(
       v.object({
-        categoryId: v.string(),
-        categoryName: v.string(),
+        quadrantId: v.string(),
+        quadrantName: v.string(),
         maxPoints: v.number(),
         score: v.number(),
-        tier: v.string(),
         criteriaScores: v.array(
           v.object({
             criterionId: v.string(),
             criterionName: v.string(),
             maxPoints: v.number(),
             score: v.number(),
+            type: v.optional(v.string()),
             evidence: v.optional(v.string()),
             slideNumbers: v.optional(v.array(v.number())),
           })
@@ -46,8 +40,9 @@ export const push = internalMutation({
       .first();
     if (existing) return { action: "duplicate", id: existing._id };
 
-    if (!(args.reviewPass in PASS_TO_FIELD)) {
-      throw new Error(`Invalid reviewPass: ${args.reviewPass}. Must be designer, teacher, or student.`);
+    // Validate reviewPass
+    if (args.reviewPass !== "spine" && !args.reviewPass.startsWith("applet_")) {
+      throw new Error(`Invalid reviewPass: ${args.reviewPass}. Must be "spine" or "applet_N".`);
     }
 
     const now = new Date().toISOString();
@@ -56,7 +51,7 @@ export const push = internalMutation({
       moduleId: args.moduleId,
       version: args.version,
       reviewPass: args.reviewPass,
-      categoryScores: args.categoryScores,
+      quadrantScores: args.quadrantScores,
       totalPoints: args.totalPoints,
       maxPoints: args.maxPoints,
       observations: args.observations,
@@ -65,7 +60,7 @@ export const push = internalMutation({
       dedupKey: args.dedupKey,
     });
 
-    // Update hat-specific boolean on module
+    // Update completion tracking on module
     const module = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
@@ -73,20 +68,22 @@ export const push = internalMutation({
       .first();
 
     if (module && module.version === args.version) {
-      const field = PASS_TO_FIELD[args.reviewPass as keyof typeof PASS_TO_FIELD];
-      const patch: Record<string, unknown> = {
-        [field]: true,
-        updatedAt: now,
-      };
+      const patch: Record<string, unknown> = { updatedAt: now };
 
-      // Check if all 3 passes complete
-      const otherPasses = Object.keys(PASS_TO_FIELD).filter((p) => p !== args.reviewPass);
-      const allComplete = otherPasses.every((p) => {
-        const f = PASS_TO_FIELD[p as keyof typeof PASS_TO_FIELD];
-        return module[f as keyof typeof module] === true;
-      });
+      if (args.reviewPass === "spine") {
+        patch.spineComplete = true;
+      } else if (args.reviewPass.startsWith("applet_")) {
+        patch.completedAppletReviews = (module.completedAppletReviews ?? 0) + 1;
+      }
 
-      if (allComplete) {
+      // Check if all reviews complete
+      const newSpineComplete = args.reviewPass === "spine" ? true : (module.spineComplete ?? false);
+      const newAppletReviews = args.reviewPass.startsWith("applet_")
+        ? (module.completedAppletReviews ?? 0) + 1
+        : (module.completedAppletReviews ?? 0);
+      const totalApplets = module.totalApplets ?? 0;
+
+      if (newSpineComplete && newAppletReviews >= totalApplets) {
         patch.status = "all_reviews_complete";
       }
 

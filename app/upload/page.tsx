@@ -86,6 +86,7 @@ export default function UploadPage() {
         layoutType: (s.layout_type as string) ?? (s.layoutType as string),
         hasAnimation: (s.has_animation as boolean) ?? (s.hasAnimation as boolean),
         animationSequence: s.animation_sequence ?? s.animationSequence,
+        morphPairWith: (s.morphPairWith as number) ?? (s.morph_pair_with as number) ?? undefined,
         metadata: s.metadata,
       })
     );
@@ -133,7 +134,10 @@ export default function UploadPage() {
   }
 
   function canProceedStep1() { return title.trim().length > 0 && learningObjective.trim().length > 0 && submittedBy.trim().length > 0; }
-  function canProceedStep2() { return !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error; }
+  const anyAppletParsing = applets.some((a) => a.parsed?.parsing);
+  function canProceedStep2() {
+    return !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error && !anyAppletParsing;
+  }
 
   function buildSequencedSlides() {
     if (!spineParsed) return [];
@@ -167,7 +171,8 @@ export default function UploadPage() {
       const slides = sequenced.map((s) => ({
         slideNumber: s.slideNumber, sourceFile: s.sourceFile, sourceSlideNumber: s.sourceSlideNumber,
         textContent: s.textContent, speakerNotes: s.speakerNotes, layoutType: s.layoutType,
-        hasAnimation: s.hasAnimation, animationSequence: s.animationSequence, metadata: s.metadata,
+        hasAnimation: s.hasAnimation, animationSequence: s.animationSequence,
+        morphPairWith: s.morphPairWith, metadata: s.metadata,
         thumbnailStorageId: s.thumbnailStorageId as Id<"_storage"> | undefined,
       }));
 
@@ -357,7 +362,7 @@ export default function UploadPage() {
               </button>
               <button type="button" disabled={!canProceedStep2()} onClick={() => { setError(""); setStep(3); }}
                 className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm">
-                Next &rarr;
+                {anyAppletParsing ? "Parsing applets..." : "Next \u2192"}
               </button>
             </div>
           </div>
