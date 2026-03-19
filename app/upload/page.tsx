@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -10,9 +10,6 @@ import {
   describeModuleFlow,
   SourceSlide,
 } from "@/lib/moduleFlow";
-
-const CONVEX_SITE_URL =
-  process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".cloud", ".site") || "";
 
 const GRADES = ["3", "4", "5", "6"];
 const TOPICS = [
@@ -41,6 +38,7 @@ export default function UploadPage() {
 
   const submitWithFlow = useMutation(api.modules.submitModuleWithFlow);
   const generateUploadUrl = useMutation(api.modules.generateUploadUrl);
+  const parsePptx = useAction(api.parser.parsePptx);
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
@@ -60,20 +58,21 @@ export default function UploadPage() {
   // ── File parsing ─────────────────────────────────────────────────────
 
   async function parseFile(file: File): Promise<SourceSlide[]> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await fetch(`${CONVEX_SITE_URL}/proxy/parse-pptx`, {
+    // Upload file to Convex storage first
+    const uploadUrl = await generateUploadUrl();
+    const uploadResult = await fetch(uploadUrl, {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": file.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+      body: file,
     });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Parser error: ${text}`);
-    }
-    const parsed = await response.json();
+    if (!uploadResult.ok) throw new Error("Failed to upload file for parsing");
+    const { storageId } = await uploadResult.json();
+
+    // Call Convex action to parse via VPS microservice (server-side, no CORS)
+    const parsed = await parsePptx({ storageId });
     const rawSlides: Array<Record<string, unknown>> = Array.isArray(parsed)
       ? parsed
-      : parsed.slides ?? [];
+      : (parsed as Record<string, unknown>).slides as Array<Record<string, unknown>> ?? [];
     return rawSlides.map(
       (s: Record<string, unknown>, idx: number): SourceSlide => ({
         sourceFile: "",
