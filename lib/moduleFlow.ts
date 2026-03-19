@@ -13,6 +13,7 @@ export type SourceSlide = {
   layoutType?: string;
   hasAnimation?: boolean;
   animationSequence?: unknown;
+  morphPairWith?: number; // slide number of morph partner (within source file)
   metadata?: unknown;
   thumbnailStorageId?: string;
 };

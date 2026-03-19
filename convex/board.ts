@@ -23,16 +23,15 @@ type ModuleBoardItem = {
   overallScore: number | null;
   overallPercentage: number | null;
   scoreBand: string | null;
-  tier1AllPassed: boolean | null;
-  designerComplete: boolean;
-  teacherComplete: boolean;
-  studentComplete: boolean;
+  spineComplete: boolean;
+  totalApplets: number;
+  completedAppletReviews: number;
   submittedBy: string | null;
   submittedAt: string;
   updatedAt: string;
   completedAt: string | null;
-  // Directive counts for Vinay Review stage
-  directiveCounts: { total: number; pending: number; accepted: number; rejected: number } | null;
+  // Recommendation counts for Vinay Review stage
+  recommendationCounts: { total: number; pending: number; accepted: number; rejected: number } | null;
 };
 
 function statusToColumn(status: string): BoardColumn {
@@ -45,11 +44,9 @@ function statusToColumn(status: string): BoardColumn {
       return "Parsing";
     case "gatekeeper_pass":
     case "gatekeeper_fail":
+    case "flow_mapped":
+    case "researched":
       return "Gate Check";
-    case "designer_reviewing":
-    case "teacher_reviewing":
-    case "student_reviewing":
-      return "In Review";
     case "all_reviews_complete":
       return "Integration";
     case "review_complete":
@@ -73,26 +70,26 @@ export const getBoard = query({
       .order("desc")
       .take(200);
 
-    // For modules in Vinay Review, fetch directive counts
+    // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules
       .filter((m) => m.status === "review_complete")
       .map((m) => ({ moduleId: m.moduleId, version: m.version }));
 
-    const directiveCountsMap = new Map<string, { total: number; pending: number; accepted: number; rejected: number }>();
+    const recCountsMap = new Map<string, { total: number; pending: number; accepted: number; rejected: number }>();
 
     for (const { moduleId, version } of vinayModuleIds) {
-      const directives = await ctx.db
-        .query("fixDirectives")
+      const recs = await ctx.db
+        .query("recommendations")
         .withIndex("by_moduleId_version", (q) =>
           q.eq("moduleId", moduleId).eq("version", version)
         )
         .collect();
 
-      directiveCountsMap.set(`${moduleId}-v${version}`, {
-        total: directives.length,
-        pending: directives.filter((d) => d.reviewStatus === "pending").length,
-        accepted: directives.filter((d) => d.reviewStatus === "accepted").length,
-        rejected: directives.filter((d) => d.reviewStatus === "rejected").length,
+      recCountsMap.set(`${moduleId}-v${version}`, {
+        total: recs.length,
+        pending: recs.filter((r) => r.reviewStatus === "pending").length,
+        accepted: recs.filter((r) => r.reviewStatus === "accepted").length,
+        rejected: recs.filter((r) => r.reviewStatus === "rejected").length,
       });
     }
 
@@ -108,15 +105,14 @@ export const getBoard = query({
       overallScore: m.overallScore ?? null,
       overallPercentage: m.overallPercentage ?? null,
       scoreBand: m.scoreBand ?? null,
-      tier1AllPassed: m.tier1AllPassed ?? null,
-      designerComplete: m.designerComplete ?? false,
-      teacherComplete: m.teacherComplete ?? false,
-      studentComplete: m.studentComplete ?? false,
+      spineComplete: m.spineComplete ?? false,
+      totalApplets: m.totalApplets ?? 0,
+      completedAppletReviews: m.completedAppletReviews ?? 0,
       submittedBy: m.submittedBy ?? null,
       submittedAt: m.submittedAt,
       updatedAt: m.updatedAt,
       completedAt: m.completedAt ?? null,
-      directiveCounts: directiveCountsMap.get(`${m.moduleId}-v${m.version}`) ?? null,
+      recommendationCounts: recCountsMap.get(`${m.moduleId}-v${m.version}`) ?? null,
     }));
   },
 });

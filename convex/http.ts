@@ -96,13 +96,28 @@ http.route({
 });
 
 http.route({
-  path: "/push/fix-directives",
+  path: "/push/recommendations",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      const result = await ctx.runMutation(internal.fixDirectives.pushBatch, body);
+      const result = await ctx.runMutation(internal.recommendations.pushBatch, body);
+      return jsonResponse({ success: true, ...result });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
+http.route({
+  path: "/push/flow-map",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(internal.flowMap.push, body);
       return jsonResponse({ success: true, ...result });
     } catch (error) {
       return errorResponse(error);
@@ -145,13 +160,13 @@ http.route({
 });
 
 http.route({
-  path: "/update/directive-review",
+  path: "/update/recommendation-review",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      await ctx.runMutation(api.fixDirectives.review, body);
+      await ctx.runMutation(api.recommendations.review, body);
       return jsonResponse({ success: true });
     } catch (error) {
       return errorResponse(error);
@@ -160,14 +175,29 @@ http.route({
 });
 
 http.route({
-  path: "/update/complete-review",
+  path: "/update/complete-recommendation-review",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      const result = await ctx.runMutation(api.fixDirectives.completeVinayReview, body);
+      const result = await ctx.runMutation(api.recommendations.completeVinayReview, body);
       return jsonResponse({ success: true, ...result });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
+http.route({
+  path: "/update/flow-map-flag",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const body = await request.json();
+      await ctx.runMutation(api.flowMap.flag, body);
+      return jsonResponse({ success: true });
     } catch (error) {
       return errorResponse(error);
     }
@@ -250,7 +280,7 @@ http.route({
 });
 
 http.route({
-  path: "/query/fix-directives",
+  path: "/query/recommendations",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
@@ -260,8 +290,27 @@ http.route({
       const versionParam = url.searchParams.get("version");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
       const version = versionParam ? parseInt(versionParam, 10) : undefined;
-      const directives = await ctx.runQuery(api.fixDirectives.byModule, { moduleId, version });
-      return jsonResponse(directives);
+      const recs = await ctx.runQuery(api.recommendations.byModule, { moduleId, version });
+      return jsonResponse(recs);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
+http.route({
+  path: "/query/flow-map",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const url = new URL(request.url);
+      const moduleId = url.searchParams.get("moduleId");
+      const versionParam = url.searchParams.get("version");
+      if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
+      const version = versionParam ? parseInt(versionParam, 10) : undefined;
+      const flowMap = await ctx.runQuery(api.flowMap.byModule, { moduleId, version });
+      return jsonResponse(flowMap);
     } catch (error) {
       return errorResponse(error);
     }
@@ -338,13 +387,14 @@ http.route({
 
 const allPaths = [
   "/push/module", "/push/intake", "/push/gatekeeper", "/push/review-scores",
-  "/push/fix-directives", "/push/activity",
+  "/push/recommendations", "/push/flow-map", "/push/activity",
   "/upload/generate-url",
-  "/update/module-status", "/update/directive-review", "/update/complete-review",
+  "/update/module-status", "/update/recommendation-review",
+  "/update/complete-recommendation-review", "/update/flow-map-flag",
   "/update/slide-thumbnail",
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
-  "/query/review-scores", "/query/fix-directives", "/query/pipeline-summary",
-  "/query/activity",
+  "/query/review-scores", "/query/recommendations", "/query/flow-map",
+  "/query/pipeline-summary", "/query/activity",
 ];
 
 for (const path of allPaths) {

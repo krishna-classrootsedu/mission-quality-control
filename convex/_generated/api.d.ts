@@ -10,7 +10,7 @@
 
 import type * as agentActivity from "../agentActivity.js";
 import type * as board from "../board.js";
-import type * as fixDirectives from "../fixDirectives.js";
+import type * as flowMap from "../flowMap.js";
 import type * as gatekeeper from "../gatekeeper.js";
 import type * as gatekeeperQuery from "../gatekeeperQuery.js";
 import type * as http from "../http.js";
@@ -18,6 +18,7 @@ import type * as intake from "../intake.js";
 import type * as lib_activityHelper from "../lib/activityHelper.js";
 import type * as modules from "../modules.js";
 import type * as parsedSlides from "../parsedSlides.js";
+import type * as recommendations from "../recommendations.js";
 import type * as reviewScores from "../reviewScores.js";
 import type * as seed from "../seed.js";
 
@@ -30,7 +31,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentActivity: typeof agentActivity;
   board: typeof board;
-  fixDirectives: typeof fixDirectives;
+  flowMap: typeof flowMap;
   gatekeeper: typeof gatekeeper;
   gatekeeperQuery: typeof gatekeeperQuery;
   http: typeof http;
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   "lib/activityHelper": typeof lib_activityHelper;
   modules: typeof modules;
   parsedSlides: typeof parsedSlides;
+  recommendations: typeof recommendations;
   reviewScores: typeof reviewScores;
   seed: typeof seed;
 }>;

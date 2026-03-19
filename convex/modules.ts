@@ -10,9 +10,8 @@ const VALID_STATUSES = [
   "intake_failed",
   "gatekeeper_pass",
   "gatekeeper_fail",
-  "designer_reviewing",
-  "teacher_reviewing",
-  "student_reviewing",
+  "flow_mapped",
+  "researched",
   "all_reviews_complete",
   "review_complete",
   "vinay_reviewed",
@@ -98,7 +97,7 @@ export const updateStatus = internalMutation({
     overallScore: v.optional(v.number()),
     overallPercentage: v.optional(v.number()),
     scoreBand: v.optional(v.string()),
-    tier1AllPassed: v.optional(v.boolean()),
+    researchBrief: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (!VALID_STATUSES.includes(args.status as typeof VALID_STATUSES[number])) {
@@ -124,7 +123,7 @@ export const updateStatus = internalMutation({
     if (args.overallScore !== undefined) patch.overallScore = args.overallScore;
     if (args.overallPercentage !== undefined) patch.overallPercentage = args.overallPercentage;
     if (args.scoreBand !== undefined) patch.scoreBand = args.scoreBand;
-    if (args.tier1AllPassed !== undefined) patch.tier1AllPassed = args.tier1AllPassed;
+    if (args.researchBrief !== undefined) patch.researchBrief = args.researchBrief;
     if (args.status === "ship_ready") patch.completedAt = now;
 
     await ctx.db.patch(module._id, patch);
@@ -262,6 +261,7 @@ export const submitModuleWithFlow = mutation({
       layoutType: v.optional(v.string()),
       hasAnimation: v.optional(v.boolean()),
       animationSequence: v.optional(v.any()),
+      morphPairWith: v.optional(v.number()),
       metadata: v.optional(v.any()),
       thumbnailStorageId: v.optional(v.id("_storage")),
     })),
@@ -277,6 +277,9 @@ export const submitModuleWithFlow = mutation({
       .slice(0, 40);
     const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
 
+    // Compute totalApplets from sourceFiles
+    const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
+
     // Create module record
     const totalSlides = args.slides.length;
     const moduleDocId = await ctx.db.insert("modules", {
@@ -290,6 +293,9 @@ export const submitModuleWithFlow = mutation({
       sourceFiles: args.sourceFiles,
       status: "intake_complete",
       version: 1,
+      totalApplets,
+      completedAppletReviews: 0,
+      spineComplete: false,
       submittedBy: args.submittedBy,
       submittedAt: now,
       updatedAt: now,
@@ -308,6 +314,7 @@ export const submitModuleWithFlow = mutation({
         layoutType: slide.layoutType,
         hasAnimation: slide.hasAnimation,
         animationSequence: slide.animationSequence,
+        morphPairWith: slide.morphPairWith,
         metadata: slide.metadata,
         thumbnailStorageId: slide.thumbnailStorageId,
         agentName: "upload-ui",

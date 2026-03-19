@@ -6,9 +6,8 @@ export const PIPELINE_STATUSES = [
   "intake_failed",
   "gatekeeper_pass",
   "gatekeeper_fail",
-  "designer_reviewing",
-  "teacher_reviewing",
-  "student_reviewing",
+  "flow_mapped",
+  "researched",
   "all_reviews_complete",
   "review_complete",
   "vinay_reviewed",
@@ -32,24 +31,45 @@ export const BOARD_COLUMNS = [
 
 export type BoardColumn = (typeof BOARD_COLUMNS)[number];
 
-// Score bands
+// Score bands (CRLDS: 90/75/50 thresholds)
 export const SCORE_BANDS = {
-  "ship_ready": { label: "Ship-ready", min: 85, color: "emerald" },
-  "upgradeable": { label: "Upgradeable", min: 70, color: "amber" },
-  "re_architect": { label: "Re-architect", min: 50, color: "orange" },
-  "reframe": { label: "Reframe from LO", min: 0, color: "red" },
+  "ship_ready": { label: "Ship-ready", min: 90, color: "emerald" },
+  "upgradeable": { label: "Upgradeable", min: 75, color: "amber" },
+  "rework": { label: "Rework", min: 50, color: "orange" },
+  "redesign": { label: "Redesign", min: 0, color: "red" },
 } as const;
 
 export type ScoreBand = keyof typeof SCORE_BANDS;
 
-// Directive types
-export const DIRECTIVE_TYPES = {
-  fix: { label: "Fix", color: "gray", icon: "wrench" },
-  insert: { label: "Insert", color: "blue", icon: "plus" },
-  delete: { label: "Delete", color: "red", icon: "minus" },
+// Operation types (replaces directive types)
+export const OPERATION_TYPES = {
+  DELETE: { label: "Delete", color: "red" },
+  INSERT: { label: "Insert", color: "blue" },
+  EDIT: { label: "Edit", color: "gray" },
+  REPLACE: { label: "Replace", color: "violet" },
+  ADD: { label: "Add", color: "emerald" },
 } as const;
 
-export type DirectiveType = keyof typeof DIRECTIVE_TYPES;
+export type OperationType = keyof typeof OPERATION_TYPES;
+
+// Confidence levels
+export const CONFIDENCE_LEVELS = {
+  high: { label: "High", color: "emerald" },
+  medium: { label: "Medium", color: "amber" },
+  low: { label: "Low", color: "gray" },
+} as const;
+
+export type ConfidenceLevel = keyof typeof CONFIDENCE_LEVELS;
+
+// 4-quadrant scoring system (CRLDS)
+export const QUADRANTS = [
+  { id: "P", name: "Pedagogy", maxPoints: 25 },
+  { id: "D", name: "Design", maxPoints: 25 },
+  { id: "X", name: "Experience", maxPoints: 25 },
+  { id: "L", name: "Learning", maxPoints: 25 },
+] as const;
+
+export type QuadrantId = "P" | "D" | "X" | "L";
 
 // Board item (from getBoard query)
 export type ModuleBoardItem = {
@@ -64,37 +84,20 @@ export type ModuleBoardItem = {
   overallScore: number | null;
   overallPercentage: number | null;
   scoreBand: string | null;
-  tier1AllPassed: boolean | null;
-  designerComplete: boolean;
-  teacherComplete: boolean;
-  studentComplete: boolean;
+  spineComplete: boolean;
+  totalApplets: number;
+  completedAppletReviews: number;
   submittedBy: string | null;
   submittedAt: string;
   updatedAt: string;
   completedAt: string | null;
-  directiveCounts: {
+  recommendationCounts: {
     total: number;
     pending: number;
     accepted: number;
     rejected: number;
   } | null;
 };
-
-// 12 review categories
-export const CATEGORIES = [
-  { id: "A", name: "Activity Design & Engagement", maxPoints: 12, tier: "tier1", hat: "designer" },
-  { id: "B", name: "Visual Design & Layout", maxPoints: 12, tier: "tier1", hat: "designer" },
-  { id: "C", name: "Content Accuracy & Depth", maxPoints: 10, tier: "tier1", hat: "teacher" },
-  { id: "D", name: "Differentiation & Scaffolding", maxPoints: 10, tier: "tier1", hat: "teacher" },
-  { id: "E", name: "Student Experience & Flow", maxPoints: 10, tier: "tier2", hat: "student" },
-  { id: "F", name: "Fun & Motivation", maxPoints: 10, tier: "tier2", hat: "student" },
-  { id: "G", name: "Gamification & Rewards", maxPoints: 10, tier: "tier1", hat: "designer" },
-  { id: "H", name: "Hints & Help System", maxPoints: 10, tier: "tier2", hat: "student" },
-  { id: "J", name: "Journey & Progression", maxPoints: 10, tier: "tier2", hat: "designer" },
-  { id: "K", name: "Knowledge Check & Assessment", maxPoints: 8, tier: "tier1", hat: "teacher" },
-  { id: "T", name: "Teacher Notes & Guidance", maxPoints: 8, tier: "tier1", hat: "teacher" },
-  { id: "V", name: "Voice & Tone", maxPoints: 10, tier: "tier1", hat: "designer" },
-] as const;
 
 // Column config for color styling
 export const COLUMN_CONFIG: Record<BoardColumn, { bg: string; border: string; headerBg: string; count: string }> = {
@@ -116,9 +119,8 @@ export const STATUS_LABELS: Record<string, string> = {
   intake_failed: "Parse Failed",
   gatekeeper_pass: "Gate Passed",
   gatekeeper_fail: "Gate Failed",
-  designer_reviewing: "Designer Review",
-  teacher_reviewing: "Teacher Review",
-  student_reviewing: "Student Review",
+  flow_mapped: "Flow Mapped",
+  researched: "Researched",
   all_reviews_complete: "Reviews Done",
   review_complete: "Awaiting Review",
   vinay_reviewed: "Reviewed",
