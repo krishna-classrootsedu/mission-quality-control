@@ -11,9 +11,8 @@ import {
   SourceSlide,
 } from "@/lib/moduleFlow";
 
-const PARSER_URL =
-  process.env.NEXT_PUBLIC_PARSER_URL || "http://localhost:8100";
-const PARSER_API_KEY = process.env.NEXT_PUBLIC_PARSER_API_KEY || "";
+const CONVEX_SITE_URL =
+  process.env.NEXT_PUBLIC_CONVEX_URL?.replace(".cloud", ".site") || "";
 
 const GRADES = ["3", "4", "5", "6"];
 const TOPICS = [
@@ -63,9 +62,8 @@ export default function UploadPage() {
   async function parseFile(file: File): Promise<SourceSlide[]> {
     const formData = new FormData();
     formData.append("file", file);
-    const response = await fetch(`${PARSER_URL}/parse-pptx`, {
+    const response = await fetch(`${CONVEX_SITE_URL}/proxy/parse-pptx`, {
       method: "POST",
-      headers: { "X-API-Key": PARSER_API_KEY },
       body: formData,
     });
     if (!response.ok) {
