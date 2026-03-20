@@ -2,7 +2,7 @@ import ModuleBoard from "@/components/ModuleBoard";
 
 export default function BoardPage() {
   return (
-    <main className="pt-5 pb-8">
+    <main className="h-[calc(100vh-48px)]">
       <ModuleBoard />
     </main>
   );

@@ -80,7 +80,7 @@ export default function AppletTabContent({
     return sourceFileToComponent(s.sourceFile) === appletKey;
   });
 
-  const appletRecs = recommendations.filter((r) => r.component === appletKey);
+  const appletRecs = recommendations.filter((r) => r.component === appletKey && r.slideNumber != null);
 
   return (
     <div className="space-y-3">

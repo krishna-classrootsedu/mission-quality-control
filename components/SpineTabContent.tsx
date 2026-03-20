@@ -81,7 +81,7 @@ export default function SpineTabContent({
   const spineSlides = hasSourceFiles
     ? slides.filter((s) => s.sourceFile === "spine")
     : slides;
-  const spineRecs = recommendations.filter((r) => r.component === "spine");
+  const spineRecs = recommendations.filter((r) => r.component === "spine" && r.slideNumber != null);
 
   return (
     <div className="space-y-3">
