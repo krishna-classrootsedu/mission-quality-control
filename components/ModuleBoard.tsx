@@ -10,7 +10,7 @@ export default function ModuleBoard() {
 
   if (boardData === undefined) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-full">
         <div className="flex items-center gap-2 text-stone-400 text-sm">
           <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -30,10 +30,11 @@ export default function ModuleBoard() {
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 px-5">
+    <div className="flex items-start gap-3 h-full overflow-x-auto overflow-y-hidden px-5 py-4">
       {BOARD_COLUMNS.map((col) => (
         <ModuleBoardColumn key={col} column={col} modules={grouped.get(col) ?? []} />
       ))}
+      <div className="flex-shrink-0 w-1" />
     </div>
   );
 }

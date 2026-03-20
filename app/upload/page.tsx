@@ -79,6 +79,7 @@ export default function UploadPage() {
         animationSequence: s.animation_sequence ?? s.animationSequence,
         morphPairWith: (s.morphPairWith as number) ?? (s.morph_pair_with as number) ?? undefined,
         metadata: s.metadata,
+        thumbnailStorageId: (s.thumbnailStorageId as string) ?? undefined,
       })
     );
   }

@@ -139,7 +139,7 @@ export default function ModuleDetailPage() {
 
   if (moduleData === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <div className="space-y-3">
           <div className="h-8 w-48 animate-pulse bg-stone-100 rounded" />
           <div className="h-4 w-32 animate-pulse bg-stone-100 rounded" />
@@ -151,7 +151,7 @@ export default function ModuleDetailPage() {
 
   if (moduleData === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <div className="text-stone-400">Module not found: {moduleId}</div>
       </div>
     );
@@ -163,9 +163,9 @@ export default function ModuleDetailPage() {
   const needsDecisionCount = decisions.size - saveableCount;
 
   return (
-    <div className="min-h-screen pb-16">
+    <div className="h-[calc(100vh-48px)] flex flex-col">
       {/* Sub-header */}
-      <div className="border-b border-stone-200/60 bg-white">
+      <div className="border-b border-stone-200/60 bg-white sticky top-12 z-10 flex-shrink-0">
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="flex items-center justify-between py-3">
             <div>
@@ -216,7 +216,8 @@ export default function ModuleDetailPage() {
       </div>
 
       {/* Content with crossfade */}
-      <main className="max-w-[1400px] mx-auto px-6 py-4">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 pb-16">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -262,6 +263,7 @@ export default function ModuleDetailPage() {
             ) : null}
           </motion.div>
         </AnimatePresence>
+        </div>
       </main>
 
       {/* Sticky save bar */}

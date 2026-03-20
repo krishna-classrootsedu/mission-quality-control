@@ -45,17 +45,14 @@ export default function SlideReviewList({
   decisions: Map<string, Decision>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
 }) {
-  const { slideRecs, generalRecs, sortedSlides } = useMemo(() => {
+  const { slideRecs, sortedSlides } = useMemo(() => {
     const slideMap = new Map<number, Recommendation[]>();
-    const general: Recommendation[] = [];
 
     for (const r of recommendations) {
       if (r.slideNumber != null) {
         const arr = slideMap.get(r.slideNumber) ?? [];
         arr.push(r);
         slideMap.set(r.slideNumber, arr);
-      } else {
-        general.push(r);
       }
     }
 
@@ -70,7 +67,7 @@ export default function SlideReviewList({
         }));
     }
 
-    return { slideRecs: slideMap, generalRecs: general, sortedSlides: sorted };
+    return { slideRecs: slideMap, sortedSlides: sorted };
   }, [slides, recommendations]);
 
   if (sortedSlides.length === 0 && recommendations.length === 0) {
@@ -119,25 +116,6 @@ export default function SlideReviewList({
         </div>
       ) : null}
 
-      {generalRecs.length > 0 && (
-        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5 mt-3">
-          <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] mb-3">
-            General / Module-wide ({generalRecs.length})
-          </h3>
-          <div className="space-y-2">
-            {generalRecs
-              .sort((a, b) => (b.pointsRecoverable ?? 0) - (a.pointsRecoverable ?? 0))
-              .map((r) => (
-                <InlineRecommendation
-                  key={r._id}
-                  recommendation={r}
-                  decision={decisions.get(r._id)}
-                  onDecisionChange={onDecisionChange}
-                />
-              ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
