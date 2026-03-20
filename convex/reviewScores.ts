@@ -1,6 +1,6 @@
 import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { logActivityIfNew } from "./lib/activityHelper";
+import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
 export const push = internalMutation({
   args: {
@@ -33,6 +33,9 @@ export const push = internalMutation({
     dedupKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Bail if module was deleted
+    if (await isModuleDeleted(ctx, args.moduleId)) return { action: "module_deleted" };
+
     // Dedup
     const existing = await ctx.db
       .query("reviewScores")

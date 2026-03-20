@@ -111,6 +111,22 @@ export const COLUMN_CONFIG: Record<BoardColumn, { bg: string; border: string; he
   "Ship-ready": { bg: "bg-emerald-50", border: "border-emerald-200", headerBg: "bg-emerald-100", count: "bg-emerald-200 text-emerald-700" },
 };
 
+// Quadrant color mapping for pills/badges
+export const QUADRANT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  P: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
+  D: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+  X: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+  L: { bg: "bg-pink-50", text: "text-pink-700", border: "border-pink-200" },
+  GATE: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+};
+
+// Map sourceFile labels (A1, A2) to component keys (applet_1, applet_2)
+export function sourceFileToComponent(sourceFile: string): string {
+  if (sourceFile === "spine") return "spine";
+  const match = sourceFile.match(/^A(\d+)$/);
+  return match ? `applet_${match[1]}` : sourceFile;
+}
+
 // Status display labels
 export const STATUS_LABELS: Record<string, string> = {
   submitted: "Submitted",

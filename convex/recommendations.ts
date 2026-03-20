@@ -1,6 +1,6 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { logActivityIfNew } from "./lib/activityHelper";
+import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
 // Batch-insert recommendations (called by Integrator)
 export const pushBatch = internalMutation({
@@ -32,6 +32,9 @@ export const pushBatch = internalMutation({
     dedupKey: v.string(),
   },
   handler: async (ctx, args) => {
+    // Bail if module was deleted
+    if (await isModuleDeleted(ctx, args.moduleId)) return { action: "module_deleted" };
+
     // Dedup — check if we already processed this batch
     const existingActivity = await ctx.db
       .query("agentActivity")

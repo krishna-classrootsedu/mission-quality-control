@@ -10,6 +10,7 @@
 
 import type * as agentActivity from "../agentActivity.js";
 import type * as board from "../board.js";
+import type * as deleteModule from "../deleteModule.js";
 import type * as flowMap from "../flowMap.js";
 import type * as gatekeeper from "../gatekeeper.js";
 import type * as gatekeeperQuery from "../gatekeeperQuery.js";
@@ -32,6 +33,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentActivity: typeof agentActivity;
   board: typeof board;
+  deleteModule: typeof deleteModule;
   flowMap: typeof flowMap;
   gatekeeper: typeof gatekeeper;
   gatekeeperQuery: typeof gatekeeperQuery;
