@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { motion, AnimatePresence } from "framer-motion";
 import { sourceFileToComponent } from "@/lib/types";
 import StageBadge from "@/components/StageBadge";
 import ScoreBandBadge from "@/components/ScoreBandBadge";
@@ -48,7 +49,6 @@ export default function ModuleDetailPage() {
   const reviewMutation = useMutation(api.recommendations.review);
   const completeMutation = useMutation(api.recommendations.completeVinayReview);
 
-  // Build dynamic tabs from sourceFiles or reviewScores
   const tabs = useMemo(() => {
     const baseTabs = [
       { key: "overview", label: "Overview" },
@@ -56,7 +56,6 @@ export default function ModuleDetailPage() {
       { key: "spine", label: "Spine" },
     ];
 
-    // Get applet keys from sourceFiles (primary) or reviewScores (fallback)
     const appletKeys: { key: string; label: string }[] = [];
     if (moduleData?.sourceFiles) {
       for (const sf of moduleData.sourceFiles) {
@@ -82,7 +81,6 @@ export default function ModuleDetailPage() {
     return [...baseTabs, ...appletKeys];
   }, [moduleData?.sourceFiles, reviewScores]);
 
-  // Decision handling (shared across tabs)
   const handleDecisionChange = useCallback(
     (id: string, status: string, comment: string) => {
       setDecisions((prev) => {
@@ -125,7 +123,6 @@ export default function ModuleDetailPage() {
     }
   };
 
-  // Recommendation badge counts per tab (must be before early returns)
   const tabBadges = useMemo(() => {
     if (!recommendations) return {};
     const badges: Record<string, number> = {};
@@ -143,12 +140,10 @@ export default function ModuleDetailPage() {
   if (moduleData === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="flex items-center gap-2.5 text-gray-400 text-sm">
-          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Loading module...
+        <div className="space-y-3">
+          <div className="h-8 w-48 animate-pulse bg-stone-100 rounded" />
+          <div className="h-4 w-32 animate-pulse bg-stone-100 rounded" />
+          <div className="h-64 w-[600px] animate-pulse bg-stone-100 rounded-lg" />
         </div>
       </div>
     );
@@ -157,7 +152,7 @@ export default function ModuleDetailPage() {
   if (moduleData === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400">Module not found: {moduleId}</div>
+        <div className="text-stone-400">Module not found: {moduleId}</div>
       </div>
     );
   }
@@ -170,26 +165,26 @@ export default function ModuleDetailPage() {
   return (
     <div className="min-h-screen pb-16">
       {/* Sub-header */}
-      <div className="border-b border-gray-200/80 bg-white">
+      <div className="border-b border-stone-200/60 bg-white">
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="flex items-center justify-between py-3">
             <div>
-              <h1 className="text-base font-semibold text-gray-900 tracking-tight leading-tight">
+              <h1 className="text-lg font-semibold text-stone-800 tracking-tight leading-tight">
                 {moduleData.title}
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <StageBadge status={moduleData.status} />
-                <span className="text-[11px] text-gray-400 font-mono">v{moduleData.version}</span>
-                <span className="text-[11px] text-gray-400">Grade {moduleData.grade}</span>
+                <span className="text-[11px] text-stone-400 font-mono">v{moduleData.version}</span>
+                <span className="text-[11px] text-stone-400">Grade {moduleData.grade}</span>
               </div>
             </div>
             {moduleData.overallPercentage != null && (
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900 tabular-nums tracking-tight leading-none">
-                    {moduleData.overallPercentage}%
+                  <div className="font-display text-4xl text-stone-900 leading-none">
+                    {moduleData.overallPercentage}<span className="text-3xl">%</span>
                   </div>
-                  <div className="text-[11px] text-gray-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
+                  <div className="text-[11px] text-stone-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
                 </div>
                 <ScoreBandBadge band={moduleData.scoreBand ?? null} />
               </div>
@@ -212,7 +207,7 @@ export default function ModuleDetailPage() {
                     : tab.key === "spine"
                       ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
                       : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
-                  return count > 0 ? <span className="text-gray-300 ml-1">{count}</span> : null;
+                  return count > 0 ? <span className="text-stone-300 ml-1">{count}</span> : null;
                 })()}
               </TabButton>
             ))}
@@ -220,63 +215,73 @@ export default function ModuleDetailPage() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content with crossfade */}
       <main className="max-w-[1400px] mx-auto px-6 py-4">
-        {activeTab === "overview" ? (
-          <OverviewContent
-            moduleData={moduleData}
-            reviewScores={reviewScores ?? []}
-            gatekeeperData={gatekeeperData ?? null}
-            flowMapData={flowMapData ?? []}
-          />
-        ) : activeTab === "global" ? (
-          <GlobalContent
-            moduleData={moduleData}
-            reviewScores={reviewScores ?? []}
-            recommendations={recommendations ?? []}
-            decisions={decisions}
-            onDecisionChange={handleDecisionChange}
-          />
-        ) : activeTab === "spine" ? (
-          <SpineTabContent
-            reviewScores={reviewScores ?? []}
-            gatekeeperData={gatekeeperData ?? null}
-            slides={slidesWithUrls ?? []}
-            recommendations={recommendations ?? []}
-            decisions={decisions}
-            onDecisionChange={handleDecisionChange}
-          />
-        ) : activeTab.startsWith("applet_") ? (
-          <AppletTabContent
-            appletKey={activeTab}
-            appletLabel={tabs.find((t) => t.key === activeTab)?.label ?? activeTab}
-            reviewScores={reviewScores ?? []}
-            slides={slidesWithUrls ?? []}
-            recommendations={recommendations ?? []}
-            decisions={decisions}
-            onDecisionChange={handleDecisionChange}
-          />
-        ) : null}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            {activeTab === "overview" ? (
+              <OverviewContent
+                moduleData={moduleData}
+                reviewScores={reviewScores ?? []}
+                gatekeeperData={gatekeeperData ?? null}
+                flowMapData={flowMapData ?? []}
+              />
+            ) : activeTab === "global" ? (
+              <GlobalContent
+                moduleData={moduleData}
+                reviewScores={reviewScores ?? []}
+                recommendations={recommendations ?? []}
+                decisions={decisions}
+                onDecisionChange={handleDecisionChange}
+              />
+            ) : activeTab === "spine" ? (
+              <SpineTabContent
+                reviewScores={reviewScores ?? []}
+                gatekeeperData={gatekeeperData ?? null}
+                slides={slidesWithUrls ?? []}
+                recommendations={recommendations ?? []}
+                decisions={decisions}
+                onDecisionChange={handleDecisionChange}
+              />
+            ) : activeTab.startsWith("applet_") ? (
+              <AppletTabContent
+                appletKey={activeTab}
+                appletLabel={tabs.find((t) => t.key === activeTab)?.label ?? activeTab}
+                reviewScores={reviewScores ?? []}
+                slides={slidesWithUrls ?? []}
+                recommendations={recommendations ?? []}
+                decisions={decisions}
+                onDecisionChange={handleDecisionChange}
+              />
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
-      {/* Sticky save bar (shows when there are recommendations to review) */}
+      {/* Sticky save bar */}
       {recCount > 0 && activeTab !== "overview" && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200/80 px-6 py-3.5 z-20">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-stone-200/60 shadow-bar px-6 py-3.5 z-20">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
-            <div className="text-xs text-gray-500 flex items-center gap-3">
+            <div className="text-xs text-stone-500 flex items-center gap-3">
               {saveableCount > 0 && (
-                <span className="text-amber-600 font-medium">{saveableCount} ready to save</span>
+                <span className="text-stone-700 font-medium">{saveableCount} ready to save</span>
               )}
               {needsDecisionCount > 0 && (
-                <span className="text-orange-500">
+                <span className="text-stone-400">
                   {needsDecisionCount} {needsDecisionCount === 1 ? "row needs" : "rows need"} Accept/Reject before saving
                 </span>
               )}
               {saveableCount === 0 && needsDecisionCount === 0 && pendingCount > 0 && (
-                <span className="text-gray-400">{pendingCount} recommendations still pending</span>
+                <span className="text-stone-400">{pendingCount} recommendations still pending</span>
               )}
               {saveableCount === 0 && needsDecisionCount === 0 && pendingCount === 0 && (
-                <span className="text-emerald-600 font-medium">All recommendations reviewed</span>
+                <span className="text-stone-600 font-medium">All recommendations reviewed</span>
               )}
             </div>
             <div className="flex gap-2.5">
@@ -284,7 +289,7 @@ export default function ModuleDetailPage() {
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-all shadow-sm"
+                  className="px-4 py-2 bg-stone-900 text-white rounded-lg text-sm font-medium hover:bg-stone-800 disabled:opacity-50 transition-all"
                 >
                   {saving ? "Saving..." : `Save ${saveableCount} ${saveableCount === 1 ? "Decision" : "Decisions"}`}
                 </button>
@@ -292,7 +297,7 @@ export default function ModuleDetailPage() {
               {pendingCount === 0 && saveableCount === 0 && needsDecisionCount === 0 && (
                 <button
                   onClick={handleComplete}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-all shadow-sm"
+                  className="px-4 py-2 bg-stone-800 text-white rounded-lg text-sm font-medium hover:bg-stone-900 transition-all"
                 >
                   Complete Review
                 </button>
@@ -305,24 +310,30 @@ export default function ModuleDetailPage() {
   );
 }
 
-/* --- Tab Button --- */
+/* --- Tab Button with sliding underline --- */
 function TabButton({ active, onClick, badge, children }: {
   active: boolean; onClick: () => void; badge?: number; children: React.ReactNode;
 }) {
   return (
-    <button onClick={onClick} className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${active ? "text-gray-900" : "text-gray-400 hover:text-gray-600"}`}>
+    <button onClick={onClick} className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${active ? "text-stone-900" : "text-stone-400 hover:text-stone-600"}`}>
       <span className="flex items-center gap-1.5">
         {children}
         {badge != null && badge > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">{badge}</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-stone-800" />
         )}
       </span>
-      {active && <span className="absolute bottom-0 left-4 right-4 h-[2px] bg-gray-900 rounded-full" />}
+      {active && (
+        <motion.span
+          layoutId="tab-underline"
+          className="absolute bottom-0 left-4 right-4 h-[2px] bg-stone-800 rounded-full"
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        />
+      )}
     </button>
   );
 }
 
-/* --- Overview Tab (unchanged) --- */
+/* --- Overview Tab --- */
 
 type ReviewScoreRow = {
   reviewPass: string;
@@ -370,19 +381,17 @@ function OverviewContent({
     <div className="space-y-3">
       {/* Row 1: LO + Gatekeeper */}
       <div className="grid grid-cols-12 gap-3">
-        {/* Learning Objective */}
-        <div className="col-span-5 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Learning Objective</span>
-          <p className="text-[13px] text-gray-600 leading-relaxed mt-2">{moduleData.learningObjective}</p>
+        <div className="col-span-5 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Learning Objective</span>
+          <p className="text-[13px] text-stone-600 leading-relaxed mt-2">{moduleData.learningObjective}</p>
         </div>
 
-        {/* Gatekeeper */}
-        <div className="col-span-7 bg-white rounded-xl border border-gray-200/80 shadow-sm p-4">
+        <div className="col-span-7 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Gatekeeper Rules</span>
+            <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Gatekeeper Rules</span>
             {gatekeeperData && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                gatekeeperData.passed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
+              <span className={`text-[11px] font-medium ${
+                gatekeeperData.passed ? "text-stone-600" : "text-red-500"
               }`}>
                 {gatekeeperData.passed ? "PASSED" : "FAILED"}
               </span>
@@ -392,27 +401,25 @@ function OverviewContent({
             <div className="grid grid-cols-3 gap-x-4 gap-y-1">
               {gatekeeperData.ruleResults.map((rule) => (
                 <div key={rule.ruleId} className="flex items-center gap-2 py-0.5">
-                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                    rule.passed ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"
+                  <span className={`text-[11px] shrink-0 ${
+                    rule.passed ? "text-stone-400" : "text-red-500"
                   }`}>
                     {rule.passed ? "\u2713" : "\u2717"}
                   </span>
-                  <span className="text-[13px] text-gray-600 truncate">{rule.ruleName}</span>
+                  <span className="text-[13px] text-stone-600 truncate">{rule.ruleName}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400">Not yet checked</p>
+            <p className="text-sm text-stone-300">Not yet checked</p>
           )}
         </div>
       </div>
 
-      {/* Row 2: Flow Map */}
       {flowMapData.length > 0 && (
         <FlowMapTable steps={flowMapData} />
       )}
 
-      {/* Row 3: Component Score Summary */}
       <ComponentScoreSummary
         overallScore={moduleData.overallScore ?? null}
         overallPercentage={moduleData.overallPercentage ?? null}
@@ -420,7 +427,6 @@ function OverviewContent({
         reviewScores={reviewScores}
       />
 
-      {/* Row 4: Quadrant Scores */}
       <QuadrantScoreDisplay reviewScores={reviewScores} />
     </div>
   );
@@ -464,10 +470,7 @@ function GlobalContent({
   decisions: Map<string, { status: string; comment: string }>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
 }) {
-  // Global = recommendations with null slideNumber (module-wide issues)
   const globalRecs = recommendations.filter((r) => r.slideNumber == null);
-
-  // Build overall quadrant scores from all review passes
   const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
 
   return (
@@ -481,8 +484,8 @@ function GlobalContent({
       />
 
       {globalRecs.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+          <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] mb-3">
             Module-wide Recommendations ({globalRecs.length})
           </h3>
           <div className="space-y-2">
@@ -499,8 +502,8 @@ function GlobalContent({
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-8 text-center">
-          <p className="text-sm text-gray-400">No module-wide recommendations</p>
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-8 text-center">
+          <p className="text-sm text-stone-400">No module-wide recommendations</p>
         </div>
       )}
     </div>

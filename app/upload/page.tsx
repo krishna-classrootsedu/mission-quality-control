@@ -30,8 +30,6 @@ type AppletEntry = {
   parsed: ParsedFile | null;
 };
 
-// ── Main page ──────────────────────────────────────────────────────────
-
 export default function UploadPage() {
   const router = useRouter();
   const spineFileRef = useRef<HTMLInputElement>(null);
@@ -55,10 +53,7 @@ export default function UploadPage() {
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
 
-  // ── File parsing ─────────────────────────────────────────────────────
-
   async function parseFile(file: File): Promise<SourceSlide[]> {
-    // Upload file to Convex storage first
     const uploadUrl = await generateUploadUrl();
     const uploadResult = await fetch(uploadUrl, {
       method: "POST",
@@ -68,7 +63,6 @@ export default function UploadPage() {
     if (!uploadResult.ok) throw new Error("Failed to upload file for parsing");
     const { storageId } = await uploadResult.json();
 
-    // Call Convex action to parse via VPS microservice (server-side, no CORS)
     const parsed = await parsePptx({ storageId });
     const rawSlides: Array<Record<string, unknown>> = Array.isArray(parsed)
       ? parsed
@@ -186,130 +180,122 @@ export default function UploadPage() {
     } finally { setSubmitting(false); }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────
-
   const stepLabels = ["Module Details", "Upload Files", "Review & Submit"];
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-6">
-      <h1 className="text-base font-semibold text-gray-900 tracking-tight mb-1">Submit Module for Review</h1>
-      <p className="text-xs text-gray-400 mb-6">Upload storyboard files to start the review pipeline</p>
+      <h1 className="text-lg font-semibold text-stone-800 tracking-tight mb-1">Submit Module for Review</h1>
+      <p className="text-[11px] text-stone-400 mb-6 uppercase tracking-[0.08em] font-medium">Upload storyboard files to start the review pipeline</p>
 
-        {/* Step indicator — minimal */}
+        {/* Step indicator — minimal progress bar */}
         <div className="flex items-center gap-0 mb-6">
-          {stepLabels.map((label, i) => {
-            const s = i + 1;
-            const isActive = s === step;
-            const isDone = s < step;
-            return (
-              <div key={s} className="flex items-center">
-                {i > 0 && <div className={`w-16 h-px ${isDone ? "bg-emerald-400" : "bg-gray-200"}`} />}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                    isActive ? "bg-gray-900 text-white" : isDone ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-400"
-                  }`}>
-                    {isDone ? "\u2713" : s}
-                  </div>
-                  <span className={`text-[12px] ${isActive ? "text-gray-900 font-semibold" : isDone ? "text-emerald-600 font-medium" : "text-gray-400"}`}>
-                    {label}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          <div className="flex-1 h-1 bg-stone-200 rounded-full overflow-hidden flex">
+            {stepLabels.map((_, i) => {
+              const s = i + 1;
+              const isDone = s < step;
+              const isActive = s === step;
+              return (
+                <div
+                  key={s}
+                  className={`flex-1 h-full transition-colors ${
+                    isDone ? "bg-stone-800" : isActive ? "bg-stone-400" : "bg-stone-200"
+                  }`}
+                />
+              );
+            })}
+          </div>
+          <span className="ml-3 text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">
+            {stepLabels[step - 1]}
+          </span>
         </div>
 
-        {/* ── Step 1: Module Details ──────────────────────────────────── */}
+        {/* Step 1: Module Details */}
         {step === 1 && (
-          <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5 space-y-4">
-            {/* Title */}
+          <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Module Title *</label>
+              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Module Title *</label>
               <input
                 type="text" value={title} onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. G1C4M08 Introduction to Fractions"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-shadow"
+                className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
               />
             </div>
 
-            {/* LO */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Learning Objective *</label>
+              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Learning Objective *</label>
               <textarea
                 value={learningObjective} onChange={(e) => setLearningObjective(e.target.value)}
                 placeholder="What should students be able to do after completing this module?"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 resize-none transition-shadow"
+                className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 resize-none transition-shadow"
               />
             </div>
 
-            {/* 4-column row */}
             <div className="grid grid-cols-4 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Grade *</label>
+                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Grade *</label>
                 <select value={grade} onChange={(e) => setGrade(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
                   {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Topic</label>
+                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Topic</label>
                 <select value={topic} onChange={(e) => setTopic(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300">
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
                   <option value="">Select...</option>
                   {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Phase</label>
+                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Phase</label>
                 <input type="text" value={phase} onChange={(e) => setPhase(e.target.value)}
                   placeholder="e.g. Phase 1"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-shadow"
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Your Name *</label>
+                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Your Name *</label>
                 <input type="text" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)}
                   placeholder="e.g. Priya"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-shadow"
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
                 />
               </div>
             </div>
 
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
 
             <div className="flex justify-end pt-1">
               <button type="button" disabled={!canProceedStep1()} onClick={() => { setError(""); setStep(2); }}
-                className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm">
+                className="px-5 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                 Next &rarr;
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Step 2: Upload Files ────────────────────────────────────── */}
+        {/* Step 2: Upload Files */}
         {step === 2 && (
           <div className="space-y-3">
-            {/* Spine */}
-            <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-              <label className="block text-[13px] font-semibold text-gray-700 mb-2.5">
-                Spine PPTX <span className="text-red-400 text-xs">required</span>
+            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">
+                Spine PPTX <span className="text-red-400">required</span>
               </label>
               <div
                 className={`border-2 border-dashed rounded-lg px-5 py-4 text-center cursor-pointer transition-all ${
-                  spineParsed && !spineParsed.error ? "border-emerald-300 bg-emerald-50/50"
+                  spineParsed && !spineParsed.error ? "border-stone-400 bg-stone-50"
                     : spineParsed?.error ? "border-red-300 bg-red-50/50"
-                    : "border-gray-200 hover:border-gray-300 bg-gray-50/50"
+                    : "border-stone-200 hover:border-stone-400 bg-stone-50/50"
                 }`}
                 onClick={() => spineFileRef.current?.click()}
               >
                 <input ref={spineFileRef} type="file" accept=".pptx" onChange={handleSpineSelect} className="hidden" />
                 {spineParsed ? (
                   <div>
-                    <div className={`text-sm font-medium ${spineParsed.error ? "text-red-700" : "text-emerald-700"}`}>{spineParsed.file.name}</div>
+                    <div className={`text-[13px] font-medium ${spineParsed.error ? "text-red-700" : "text-stone-700"}`}>{spineParsed.file.name}</div>
                     {spineParsed.parsing && (
-                      <div className="flex items-center justify-center gap-2 mt-1.5 text-xs text-gray-500">
-                        <svg className="animate-spin h-3.5 w-3.5 text-gray-400" viewBox="0 0 24 24" fill="none">
+                      <div className="flex items-center justify-center gap-2 mt-1.5 text-[11px] text-stone-500">
+                        <svg className="animate-spin h-3.5 w-3.5 text-stone-400" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
@@ -317,30 +303,29 @@ export default function UploadPage() {
                       </div>
                     )}
                     {!spineParsed.parsing && !spineParsed.error && (
-                      <div className="text-xs text-emerald-600 mt-1.5">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
+                      <div className="text-[11px] text-stone-500 mt-1.5">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
                     )}
-                    {spineParsed.error && <div className="text-xs text-red-600 mt-1.5">{spineParsed.error}</div>}
+                    {spineParsed.error && <div className="text-[11px] text-red-600 mt-1.5">{spineParsed.error}</div>}
                   </div>
                 ) : (
                   <div>
-                    <div className="text-sm text-gray-500">Click to select the spine .pptx file</div>
-                    <div className="text-xs text-gray-300 mt-0.5">Main storyboard file</div>
+                    <div className="text-[13px] text-stone-500">Click to select the spine .pptx file</div>
+                    <div className="text-[11px] text-stone-300 mt-0.5">Main storyboard file</div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Applets */}
-            <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
               <div className="flex items-center justify-between mb-2.5">
-                <label className="text-[13px] font-semibold text-gray-700">Applet Storyboards</label>
+                <label className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Applet Storyboards</label>
                 <button type="button" onClick={addApplet} disabled={spineSlideCount === 0}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors">
+                  className="text-[11px] font-medium text-stone-500 hover:text-stone-700 disabled:text-stone-300 disabled:cursor-not-allowed transition-colors">
                   + Add Applet
                 </button>
               </div>
               {applets.length === 0 && (
-                <p className="text-xs text-gray-400">No applets added. Applets are optional — they insert interactive slides into the spine flow.</p>
+                <p className="text-[11px] text-stone-400">No applets added. Applets are optional — they insert interactive slides into the spine flow.</p>
               )}
               <div className="space-y-2">
                 {applets.map((applet, index) => (
@@ -350,61 +335,58 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
 
             <div className="flex justify-between pt-1">
               <button type="button" onClick={() => { setError(""); setStep(1); }}
-                className="px-5 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-all">
+                className="px-5 py-2.5 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 transition-all">
                 &larr; Back
               </button>
               <button type="button" disabled={!canProceedStep2()} onClick={() => { setError(""); setStep(3); }}
-                className="px-5 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm">
+                className="px-5 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                 {anyAppletParsing ? "Parsing applets..." : "Next \u2192"}
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Step 3: Review & Submit ─────────────────────────────────── */}
+        {/* Step 3: Review & Submit */}
         {step === 3 && (
           <div className="space-y-3">
-            {/* Two-column: Summary + Source Files */}
             <div className="grid grid-cols-5 gap-3">
-              {/* Module summary */}
-              <div className="col-span-2 bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Module</h2>
+              <div className="col-span-2 bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-3">Module</h2>
                 <div className="space-y-2">
                   <div>
-                    <div className="text-[11px] text-gray-400">Title</div>
-                    <div className="text-sm font-medium text-gray-900">{title}</div>
+                    <div className="text-[11px] text-stone-400">Title</div>
+                    <div className="text-[13px] font-medium text-stone-800">{title}</div>
                   </div>
                   <div className="flex gap-4">
                     <div>
-                      <div className="text-[11px] text-gray-400">Grade</div>
-                      <div className="text-sm text-gray-700">Grade {grade}</div>
+                      <div className="text-[11px] text-stone-400">Grade</div>
+                      <div className="text-[13px] text-stone-600">Grade {grade}</div>
                     </div>
                     {topic && <div>
-                      <div className="text-[11px] text-gray-400">Topic</div>
-                      <div className="text-sm text-gray-700">{topic}</div>
+                      <div className="text-[11px] text-stone-400">Topic</div>
+                      <div className="text-[13px] text-stone-600">{topic}</div>
                     </div>}
                     {phase && <div>
-                      <div className="text-[11px] text-gray-400">Phase</div>
-                      <div className="text-sm text-gray-700">{phase}</div>
+                      <div className="text-[11px] text-stone-400">Phase</div>
+                      <div className="text-[13px] text-stone-600">{phase}</div>
                     </div>}
                   </div>
                   <div>
-                    <div className="text-[11px] text-gray-400">Submitted by</div>
-                    <div className="text-sm text-gray-700">{submittedBy}</div>
+                    <div className="text-[11px] text-stone-400">Submitted by</div>
+                    <div className="text-[13px] text-stone-600">{submittedBy}</div>
                   </div>
                 </div>
               </div>
 
-              {/* Source files */}
-              <div className="col-span-3 bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Source Files</h2>
-                <table className="w-full text-sm">
+              <div className="col-span-3 bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-3">Source Files</h2>
+                <table className="w-full text-[13px]">
                   <thead>
-                    <tr className="text-[11px] text-gray-400 border-b border-gray-100">
+                    <tr className="text-[11px] text-stone-400 border-b border-stone-100">
                       <th className="text-left pb-2 font-medium">File</th>
                       <th className="text-left pb-2 font-medium">Type</th>
                       <th className="text-right pb-2 font-medium">Slides</th>
@@ -413,19 +395,19 @@ export default function UploadPage() {
                   </thead>
                   <tbody>
                     {spineParsed && (
-                      <tr className="border-b border-gray-50">
-                        <td className="py-1.5 text-gray-700 text-xs">{spineParsed.file.name}</td>
-                        <td className="py-1.5 text-gray-500 text-xs">Spine</td>
-                        <td className="py-1.5 text-right text-gray-700 text-xs font-mono">{spineParsed.slides.length}</td>
-                        <td className="py-1.5 text-right text-gray-300 text-xs">&mdash;</td>
+                      <tr className="border-b border-stone-50">
+                        <td className="py-1.5 text-stone-600 text-[11px]">{spineParsed.file.name}</td>
+                        <td className="py-1.5 text-stone-500 text-[11px]">Spine</td>
+                        <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{spineParsed.slides.length}</td>
+                        <td className="py-1.5 text-right text-stone-300 text-[11px]">&mdash;</td>
                       </tr>
                     )}
                     {applets.filter((a) => a.parsed && a.parsed.slides.length > 0).map((a) => (
-                      <tr key={a.label} className="border-b border-gray-50">
-                        <td className="py-1.5 text-gray-700 text-xs">{a.parsed!.file.name}</td>
-                        <td className="py-1.5 text-gray-500 text-xs">Applet ({a.label})</td>
-                        <td className="py-1.5 text-right text-gray-700 text-xs font-mono">{a.parsed!.slides.length}</td>
-                        <td className="py-1.5 text-right text-gray-700 text-xs">Slide {a.afterSpineSlide}</td>
+                      <tr key={a.label} className="border-b border-stone-50">
+                        <td className="py-1.5 text-stone-600 text-[11px]">{a.parsed!.file.name}</td>
+                        <td className="py-1.5 text-stone-500 text-[11px]">Applet ({a.label})</td>
+                        <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{a.parsed!.slides.length}</td>
+                        <td className="py-1.5 text-right text-stone-600 text-[11px]">Slide {a.afterSpineSlide}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -433,36 +415,34 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* Module flow */}
-            <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
               <div className="flex items-center justify-between mb-2.5">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Module Flow</h2>
-                <span className="text-xs text-gray-400 font-mono">{buildSequencedSlides().length} slides total</span>
+                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Module Flow</h2>
+                <span className="text-[11px] text-stone-400 font-mono">{buildSequencedSlides().length} slides total</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {buildFlowDescription().map((seg, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-xs">
-                    {i > 0 && <svg className="w-3 h-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
-                    <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-md font-medium">{seg}</span>
+                  <span key={i} className="inline-flex items-center gap-1.5 text-[11px]">
+                    {i > 0 && <svg className="w-3 h-3 text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
+                    <span className="bg-stone-100 text-stone-600 px-2.5 py-1 rounded font-medium">{seg}</span>
                   </span>
                 ))}
               </div>
             </div>
 
-            {/* LO reminder */}
-            <div className="bg-gray-50 rounded-xl border border-gray-200/60 px-4 py-3">
-              <p className="text-xs text-gray-500"><span className="font-semibold text-gray-600">LO:</span> {learningObjective}</p>
+            <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-4 py-3">
+              <p className="text-[11px] text-stone-500"><span className="font-semibold text-stone-600">LO:</span> {learningObjective}</p>
             </div>
 
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-xs text-red-700">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
 
             <div className="flex justify-between pt-1">
               <button type="button" disabled={submitting} onClick={() => { setError(""); setStep(2); }}
-                className="px-5 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 transition-all">
+                className="px-5 py-2.5 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 disabled:opacity-40 transition-all">
                 &larr; Back
               </button>
               <button type="button" disabled={submitting} onClick={handleSubmit}
-                className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm">
+                className="px-6 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                 {submitting ? submitProgress : "Submit for Review"}
               </button>
             </div>
@@ -471,8 +451,6 @@ export default function UploadPage() {
     </main>
   );
 }
-
-// ── Applet row ──────────────────────────────────────────────────────────
 
 function AppletRow({ applet, index, spineSlideCount, onFileSelect, onPositionChange, onRemove }: {
   applet: AppletEntry; index: number; spineSlideCount: number;
@@ -485,32 +463,32 @@ function AppletRow({ applet, index, spineSlideCount, onFileSelect, onPositionCha
   for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 bg-gray-50/80 rounded-lg border border-gray-100">
-      <span className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">{applet.label}</span>
+    <div className="flex items-center gap-3 px-3 py-2.5 bg-stone-50 rounded-lg border border-stone-200">
+      <span className="w-7 h-7 rounded bg-stone-200 flex items-center justify-center text-[11px] font-bold text-stone-500 shrink-0">{applet.label}</span>
       <div className="flex-1 min-w-0">
         <input ref={fileRef} type="file" accept=".pptx" onChange={(e) => onFileSelect(index, e)} className="hidden" />
         {applet.parsed ? (
           <div>
             <button type="button" onClick={() => fileRef.current?.click()}
-              className={`text-xs font-medium truncate max-w-full ${applet.parsed.error ? "text-red-600" : "text-gray-700"}`}>
+              className={`text-[11px] font-medium truncate max-w-full ${applet.parsed.error ? "text-red-600" : "text-stone-700"}`}>
               {applet.parsed.file.name}
             </button>
-            {applet.parsed.parsing && <div className="text-[10px] text-gray-400 mt-0.5">Parsing...</div>}
-            {!applet.parsed.parsing && !applet.parsed.error && <div className="text-[10px] text-emerald-600 mt-0.5">{"\u2713"} {applet.parsed.slides.length} slides</div>}
-            {applet.parsed.error && <div className="text-[10px] text-red-500 mt-0.5">{applet.parsed.error}</div>}
+            {applet.parsed.parsing && <div className="text-[11px] text-stone-400 mt-0.5">Parsing...</div>}
+            {!applet.parsed.parsing && !applet.parsed.error && <div className="text-[11px] text-stone-500 mt-0.5">{"\u2713"} {applet.parsed.slides.length} slides</div>}
+            {applet.parsed.error && <div className="text-[11px] text-red-500 mt-0.5">{applet.parsed.error}</div>}
           </div>
         ) : (
-          <button type="button" onClick={() => fileRef.current?.click()} className="text-xs text-gray-400 hover:text-gray-600">Select .pptx file</button>
+          <button type="button" onClick={() => fileRef.current?.click()} className="text-[11px] text-stone-400 hover:text-stone-600">Select .pptx file</button>
         )}
       </div>
       <div className="shrink-0">
-        <label className="block text-[10px] text-gray-400 mb-0.5">After slide</label>
+        <label className="block text-[11px] text-stone-400 mb-0.5">After slide</label>
         <select value={applet.afterSpineSlide} onChange={(e) => onPositionChange(index, Number(e.target.value))}
-          className="px-2 py-1 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-300">
+          className="px-2 py-1 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-stone-200">
           {slideOptions.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </div>
-      <button type="button" onClick={() => onRemove(index)} className="shrink-0 text-gray-300 hover:text-red-400 transition-colors" title="Remove">
+      <button type="button" onClick={() => onRemove(index)} className="shrink-0 text-stone-300 hover:text-red-400 transition-colors" title="Remove">
         <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>

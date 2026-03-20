@@ -77,7 +77,6 @@ export default function SpineTabContent({
   onDecisionChange: (id: string, status: string, comment: string) => void;
 }) {
   const spineScores = reviewScores.find((rs) => rs.reviewPass === "spine");
-  // If sourceFile is not set (legacy data), show all slides on Spine tab
   const hasSourceFiles = slides.some((s) => s.sourceFile);
   const spineSlides = hasSourceFiles
     ? slides.filter((s) => s.sourceFile === "spine")

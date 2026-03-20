@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { motion } from "framer-motion";
 import SlideRow from "./SlideRow";
 import InlineRecommendation from "./InlineRecommendation";
 
@@ -45,7 +46,6 @@ export default function SlideReviewList({
   onDecisionChange: (id: string, status: string, comment: string) => void;
 }) {
   const { slideRecs, generalRecs, sortedSlides } = useMemo(() => {
-    // Group recommendations by slideNumber
     const slideMap = new Map<number, Recommendation[]>();
     const general: Recommendation[] = [];
 
@@ -59,10 +59,8 @@ export default function SlideReviewList({
       }
     }
 
-    // Sort slides by slideNumber
     let sorted = [...slides].sort((a, b) => a.slideNumber - b.slideNumber);
 
-    // If no actual slides but recs have slideNumbers, create synthetic placeholders
     if (sorted.length === 0 && slideMap.size > 0) {
       sorted = Array.from(slideMap.keys())
         .sort((a, b) => a - b)
@@ -77,30 +75,35 @@ export default function SlideReviewList({
 
   if (sortedSlides.length === 0 && recommendations.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-8 text-center">
-        <p className="text-sm text-gray-400">No slides or recommendations for this component</p>
+      <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-8 text-center">
+        <p className="text-sm text-stone-400">No slides or recommendations for this component</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-0">
-      {/* Slide-by-slide review */}
       {sortedSlides.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm px-5 py-2">
-          {sortedSlides.map((slide) => (
-            <SlideRow
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle px-5 py-2">
+          {sortedSlides.map((slide, i) => (
+            <motion.div
               key={slide.slideNumber}
-              slide={slide}
-              recommendations={slideRecs.get(slide.slideNumber) ?? []}
-              decisions={decisions}
-              onDecisionChange={onDecisionChange}
-            />
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: i * 0.04 }}
+            >
+              <SlideRow
+                slide={slide}
+                recommendations={slideRecs.get(slide.slideNumber) ?? []}
+                decisions={decisions}
+                onDecisionChange={onDecisionChange}
+              />
+            </motion.div>
           ))}
         </div>
       ) : recommendations.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
-          <p className="text-xs text-gray-400 mb-3">Slides not yet parsed. Showing recommendations only.</p>
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+          <p className="text-[11px] text-stone-400 mb-3">Slides not yet parsed. Showing recommendations only.</p>
           <div className="space-y-2">
             {recommendations
               .sort((a, b) => (b.pointsRecoverable ?? 0) - (a.pointsRecoverable ?? 0))
@@ -116,10 +119,9 @@ export default function SlideReviewList({
         </div>
       ) : null}
 
-      {/* General section: recs with no slide number */}
       {generalRecs.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5 mt-3">
-          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5 mt-3">
+          <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] mb-3">
             General / Module-wide ({generalRecs.length})
           </h3>
           <div className="space-y-2">
