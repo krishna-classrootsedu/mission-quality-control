@@ -51,31 +51,26 @@ export default function SlideRow({
   const hasIssues = sorted.length > 0;
 
   return (
-    <div className="flex gap-4 py-3 border-b border-gray-100 last:border-b-0">
+    <div className="flex gap-4 py-5 border-b border-stone-100 last:border-b-0">
       {/* Thumbnail column */}
-      <div className="w-[200px] shrink-0">
+      <div className="w-[180px] shrink-0">
         <div className="sticky top-0">
           {slide.thumbnailUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={slide.thumbnailUrl}
               alt={`Slide ${slide.sourceSlideNumber ?? slide.slideNumber}`}
-              className="w-full rounded-lg border border-gray-200/80 shadow-sm"
+              className="w-full rounded-lg ring-1 ring-stone-200 hover:scale-[1.02] transition-transform"
             />
           ) : (
-            <div className="w-full aspect-[16/9] bg-gray-100 rounded-lg border border-gray-200/80 flex items-center justify-center">
-              <span className="text-xs text-gray-300">No thumbnail</span>
+            <div className="w-full aspect-[16/9] bg-stone-100 rounded-lg ring-1 ring-stone-200 flex items-center justify-center">
+              <span className="text-[11px] text-stone-300">No thumbnail</span>
             </div>
           )}
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <span className="text-xs font-mono font-semibold text-gray-500">
+          <div className="mt-1.5">
+            <span className="text-[11px] font-mono text-stone-500">
               #{slide.sourceSlideNumber ?? slide.slideNumber}
             </span>
-            {slide.slideType && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">
-                {slide.slideType}
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -95,10 +90,8 @@ export default function SlideRow({
           </div>
         ) : (
           <div className="flex items-center gap-2 py-4">
-            <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-bold">
-              {"\u2713"}
-            </span>
-            <span className="text-xs text-emerald-600 font-medium">No issues on this slide</span>
+            <span className="text-stone-300 text-[11px]">&#10003;</span>
+            <span className="text-[11px] text-stone-300 italic">Clean</span>
           </div>
         )}
       </div>

@@ -99,25 +99,25 @@ export type ModuleBoardItem = {
   } | null;
 };
 
-// Column config for color styling
+// Column config — all neutral stone palette (quiet luxury: the label is enough differentiation)
 export const COLUMN_CONFIG: Record<BoardColumn, { bg: string; border: string; headerBg: string; count: string }> = {
-  "Submitted": { bg: "bg-slate-50", border: "border-slate-200", headerBg: "bg-slate-100", count: "bg-slate-200 text-slate-700" },
-  "Parsing": { bg: "bg-blue-50", border: "border-blue-200", headerBg: "bg-blue-100", count: "bg-blue-200 text-blue-700" },
-  "Gate Check": { bg: "bg-violet-50", border: "border-violet-200", headerBg: "bg-violet-100", count: "bg-violet-200 text-violet-700" },
-  "In Review": { bg: "bg-indigo-50", border: "border-indigo-200", headerBg: "bg-indigo-100", count: "bg-indigo-200 text-indigo-700" },
-  "Integration": { bg: "bg-cyan-50", border: "border-cyan-200", headerBg: "bg-cyan-100", count: "bg-cyan-200 text-cyan-700" },
-  "Vinay Review": { bg: "bg-amber-50", border: "border-amber-200", headerBg: "bg-amber-100", count: "bg-amber-200 text-amber-700" },
-  "Creator Fix": { bg: "bg-orange-50", border: "border-orange-200", headerBg: "bg-orange-100", count: "bg-orange-200 text-orange-700" },
-  "Ship-ready": { bg: "bg-emerald-50", border: "border-emerald-200", headerBg: "bg-emerald-100", count: "bg-emerald-200 text-emerald-700" },
+  "Submitted": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Parsing": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Gate Check": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "In Review": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Integration": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Vinay Review": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Creator Fix": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
+  "Ship-ready": { bg: "bg-stone-50", border: "border-stone-200", headerBg: "bg-stone-50", count: "text-stone-400" },
 };
 
-// Quadrant color mapping for pills/badges
-export const QUADRANT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  P: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
-  D: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  X: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-  L: { bg: "bg-pink-50", text: "text-pink-700", border: "border-pink-200" },
-  GATE: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+// Quadrant color mapping — subtle tonal differentiation with stone warmth
+export const QUADRANT_COLORS: Record<string, { bg: string; text: string; border: string; accent: string }> = {
+  P: { bg: "bg-stone-50", text: "text-stone-600", border: "border-stone-200", accent: "border-l-stone-400" },
+  D: { bg: "bg-stone-50", text: "text-stone-600", border: "border-stone-200", accent: "border-l-stone-500" },
+  X: { bg: "bg-stone-50", text: "text-stone-600", border: "border-stone-200", accent: "border-l-stone-300" },
+  L: { bg: "bg-stone-50", text: "text-stone-600", border: "border-stone-200", accent: "border-l-stone-600" },
+  GATE: { bg: "bg-red-50", text: "text-red-600", border: "border-red-200", accent: "border-l-red-400" },
 };
 
 // Map sourceFile labels (A1, A2) to component keys (applet_1, applet_2)

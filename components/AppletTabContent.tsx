@@ -65,8 +65,8 @@ export default function AppletTabContent({
   decisions,
   onDecisionChange,
 }: {
-  appletKey: string;       // e.g. "applet_1"
-  appletLabel: string;     // e.g. "Applet 1"
+  appletKey: string;
+  appletLabel: string;
   reviewScores: ReviewScoreRow[];
   slides: Slide[];
   recommendations: Recommendation[];
@@ -75,7 +75,6 @@ export default function AppletTabContent({
 }) {
   const appletScores = reviewScores.find((rs) => rs.reviewPass === appletKey);
 
-  // Filter slides: sourceFile "A1" → component "applet_1"
   const appletSlides = slides.filter((s) => {
     if (!s.sourceFile) return false;
     return sourceFileToComponent(s.sourceFile) === appletKey;

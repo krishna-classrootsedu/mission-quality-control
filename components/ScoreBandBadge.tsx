@@ -1,13 +1,12 @@
 "use client";
 
 const BAND_STYLES: Record<string, string> = {
-  ship_ready: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  upgradeable: "bg-amber-50 text-amber-700 border-amber-200",
-  rework: "bg-orange-50 text-orange-700 border-orange-200",
-  redesign: "bg-red-50 text-red-700 border-red-200",
-  // Fallbacks for old band names (won't crash if old data comes through)
-  re_architect: "bg-orange-50 text-orange-700 border-orange-200",
-  reframe: "bg-red-50 text-red-700 border-red-200",
+  ship_ready: "bg-stone-800 text-white border-stone-800",
+  upgradeable: "bg-stone-100 text-stone-700 border-stone-300",
+  rework: "bg-stone-100 text-stone-500 border-stone-200",
+  redesign: "bg-red-50 text-red-600 border-red-200",
+  re_architect: "bg-stone-100 text-stone-500 border-stone-200",
+  reframe: "bg-red-50 text-red-600 border-red-200",
 };
 
 const BAND_LABELS: Record<string, string> = {
@@ -21,10 +20,10 @@ const BAND_LABELS: Record<string, string> = {
 
 export default function ScoreBandBadge({ band }: { band: string | null }) {
   if (!band) return null;
-  const style = BAND_STYLES[band] ?? "bg-gray-100 text-gray-500 border-gray-200";
+  const style = BAND_STYLES[band] ?? "bg-stone-100 text-stone-500 border-stone-200";
   const label = BAND_LABELS[band] ?? band;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${style}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-semibold border ${style}`}>
       {label}
     </span>
   );

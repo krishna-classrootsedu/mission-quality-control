@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 type GateResult = {
   ruleId: string;
@@ -27,52 +28,65 @@ export default function GateReport({
   const failCount = gates.length - passCount;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-lg border border-stone-200 shadow-subtle overflow-hidden">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-stone-50/50 transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{title}</span>
-          <span className="text-[10px] text-gray-400">
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">{title}</span>
+          <span className="text-[11px] text-stone-400">
             {passCount}/{gates.length} passed
             {failCount > 0 && <span className="text-red-500 ml-1">({failCount} failed)</span>}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-            overallPassed ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
+          <span className={`flex items-center gap-1 text-[11px] font-medium ${
+            overallPassed ? "text-stone-600" : "text-red-500"
           }`}>
-            {overallPassed ? "PASSED" : "FAILED"}
+            <span className={overallPassed ? "text-stone-400" : "text-red-500"}>
+              {overallPassed ? "\u2713" : "\u2717"}
+            </span>
+            {overallPassed ? "Passed" : "Failed"}
           </span>
-          <svg className={`w-4 h-4 text-gray-400 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <svg className={`w-4 h-4 text-stone-400 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
       </button>
 
-      {!collapsed && (
-        <div className="px-4 pb-3 border-t border-gray-100">
-          <div className="space-y-2 mt-2.5">
-            {gates.map((gate) => (
-              <div key={gate.ruleId} className="flex items-start gap-2.5">
-                <span className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                  gate.passed ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"
-                }`}>
-                  {gate.passed ? "\u2713" : "\u2717"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] text-gray-700 font-medium">{gate.ruleName}</div>
-                  {gate.evidence && <div className="text-[11px] text-gray-400 mt-0.5">{gate.evidence}</div>}
-                  {gate.slideNumbers && gate.slideNumbers.length > 0 && (
-                    <div className="text-[11px] text-gray-300 font-mono">Slides: {gate.slideNumbers.join(", ")}</div>
-                  )}
-                </div>
+      <AnimatePresence>
+        {!collapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3 border-t border-stone-100">
+              <div className="space-y-2 mt-2.5">
+                {gates.map((gate) => (
+                  <div key={gate.ruleId} className="flex items-start gap-2.5">
+                    <span className={`mt-0.5 text-[11px] shrink-0 ${
+                      gate.passed ? "text-stone-400" : "text-red-500"
+                    }`}>
+                      {gate.passed ? "\u2713" : "\u2717"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] text-stone-700 font-medium">{gate.ruleName}</div>
+                      {gate.evidence && <div className="text-[11px] text-stone-400 mt-0.5">{gate.evidence}</div>}
+                      {gate.slideNumbers && gate.slideNumbers.length > 0 && (
+                        <div className="text-[11px] text-stone-300 font-mono">Slides: {gate.slideNumbers.join(", ")}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

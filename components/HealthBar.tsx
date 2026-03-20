@@ -11,15 +11,15 @@ function getTimeInStage(updatedAt: string): { label: string; level: "green" | "a
 }
 
 const LEVEL_STYLES = {
-  green: "bg-emerald-100 text-emerald-700",
-  amber: "bg-amber-100 text-amber-700",
-  red: "bg-red-100 text-red-700",
+  green: "text-stone-500",
+  amber: "text-stone-400",
+  red: "text-red-500",
 };
 
 export default function HealthBar({ updatedAt }: { updatedAt: string }) {
   const { label, level } = getTimeInStage(updatedAt);
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-mono font-medium ${LEVEL_STYLES[level]}`}>
+    <span className={`inline-flex items-center text-[11px] font-mono font-medium ${LEVEL_STYLES[level]}`}>
       {label}
     </span>
   );
