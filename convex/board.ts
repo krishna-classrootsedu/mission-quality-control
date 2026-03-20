@@ -64,11 +64,12 @@ function statusToColumn(status: string): BoardColumn {
 export const getBoard = query({
   args: {},
   handler: async (ctx): Promise<ModuleBoardItem[]> => {
-    const modules = await ctx.db
+    const allModules = await ctx.db
       .query("modules")
       .withIndex("by_updatedAt")
       .order("desc")
       .take(200);
+    const modules = allModules.filter((m) => !m.deleted);
 
     // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules

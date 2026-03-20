@@ -32,6 +32,8 @@ export default defineSchema({
       slideCount: v.number(),
       storageId: v.optional(v.id("_storage")),
     }))),
+    // Soft-delete (agents check this before pushing data)
+    deleted: v.optional(v.boolean()),
     // Metadata
     submittedBy: v.optional(v.string()),
     submittedAt: v.string(),

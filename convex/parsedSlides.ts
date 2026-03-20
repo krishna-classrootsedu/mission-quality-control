@@ -40,3 +40,26 @@ export const byModule = query({
     return await q.collect();
   },
 });
+
+// Query parsed slides with resolved thumbnail URLs
+export const byModuleWithUrls = query({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    const slides = await ctx.db
+      .query("parsedSlides")
+      .withIndex("by_moduleId_version", (q) =>
+        version !== undefined
+          ? q.eq("moduleId", moduleId).eq("version", version)
+          : q.eq("moduleId", moduleId)
+      )
+      .collect();
+    return Promise.all(
+      slides.map(async (s) => ({
+        ...s,
+        thumbnailUrl: s.thumbnailStorageId
+          ? await ctx.storage.getUrl(s.thumbnailStorageId)
+          : null,
+      }))
+    );
+  },
+});

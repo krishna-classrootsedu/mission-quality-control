@@ -1,4 +1,21 @@
-import { MutationCtx } from "../_generated/server";
+import { MutationCtx, QueryCtx } from "../_generated/server";
+
+/**
+ * Check if a module is soft-deleted. Agent mutations call this
+ * before inserting data to avoid orphaned rows after deletion.
+ * Returns true if module is deleted or not found.
+ */
+export async function isModuleDeleted(
+  ctx: MutationCtx | QueryCtx,
+  moduleId: string
+): Promise<boolean> {
+  const module = await ctx.db
+    .query("modules")
+    .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+    .order("desc")
+    .first();
+  return !module || module.deleted === true;
+}
 
 /**
  * Log an activity entry if no entry with the same dedupKey exists.

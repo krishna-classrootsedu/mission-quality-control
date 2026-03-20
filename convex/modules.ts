@@ -1,6 +1,6 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { logActivityIfNew } from "./lib/activityHelper";
+import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
 // Valid pipeline statuses
 const VALID_STATUSES = [
@@ -41,6 +41,11 @@ export const upsert = internalMutation({
       .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
       .order("desc")
       .first();
+
+    // If module was deleted, treat as non-existent (don't resurrect)
+    if (existing && existing.deleted) {
+      return { id: existing._id, action: "module_deleted", version: existing.version };
+    }
 
     // Re-submit: only allowed from vinay_reviewed or creator_fixing
     if (existing) {
@@ -111,6 +116,7 @@ export const updateStatus = internalMutation({
 
     const module = await query.first();
     if (!module) throw new Error(`Module not found: ${args.moduleId}`);
+    if (module.deleted) return; // Silently bail for deleted modules
     if (args.version && module.version !== args.version) {
       throw new Error(`Version mismatch: expected ${args.version}, found ${module.version}`);
     }
@@ -153,15 +159,17 @@ export const list = query({
   },
 });
 
-// Detail for a single module (latest version)
+// Detail for a single module (latest version, excluding deleted)
 export const detail = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
-    return await ctx.db
+    const module = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
       .order("desc")
       .first();
+    if (module?.deleted) return null;
+    return module;
   },
 });
 

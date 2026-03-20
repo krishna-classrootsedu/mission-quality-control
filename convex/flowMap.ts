@@ -1,6 +1,6 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { logActivityIfNew } from "./lib/activityHelper";
+import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
 // Batch-insert flow map rows (called by Flow Mapper agent)
 export const push = internalMutation({
@@ -21,6 +21,9 @@ export const push = internalMutation({
     agentName: v.string(),
   },
   handler: async (ctx, args) => {
+    // Bail if module was deleted
+    if (await isModuleDeleted(ctx, args.moduleId)) return { action: "module_deleted", count: 0 };
+
     const now = new Date().toISOString();
     let inserted = 0;
 

@@ -1,22 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { sourceFileToComponent } from "@/lib/types";
 import StageBadge from "@/components/StageBadge";
 import ScoreBandBadge from "@/components/ScoreBandBadge";
 import FlowMapTable from "@/components/FlowMapTable";
 import QuadrantScoreDisplay from "@/components/QuadrantScoreDisplay";
 import ComponentScoreSummary from "@/components/ComponentScoreSummary";
-import RecommendationsSection from "@/components/RecommendationsSection";
-
-type Tab = "overview" | "recommendations";
+import SpineTabContent from "@/components/SpineTabContent";
+import AppletTabContent from "@/components/AppletTabContent";
+import VerdictBanner from "@/components/VerdictBanner";
+import InlineRecommendation from "@/components/InlineRecommendation";
 
 export default function ModuleDetailPage() {
   const params = useParams();
   const moduleId = params.moduleId as string;
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
+  const [saving, setSaving] = useState(false);
 
   const moduleData = useQuery(api.modules.detail, { moduleId });
   const reviewScores = useQuery(
@@ -35,6 +40,105 @@ export default function ModuleDetailPage() {
     api.flowMap.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
+  const slidesWithUrls = useQuery(
+    api.parsedSlides.byModuleWithUrls,
+    moduleData ? { moduleId, version: moduleData.version } : "skip"
+  );
+
+  const reviewMutation = useMutation(api.recommendations.review);
+  const completeMutation = useMutation(api.recommendations.completeVinayReview);
+
+  // Build dynamic tabs from sourceFiles or reviewScores
+  const tabs = useMemo(() => {
+    const baseTabs = [
+      { key: "overview", label: "Overview" },
+      { key: "global", label: "Global" },
+      { key: "spine", label: "Spine" },
+    ];
+
+    // Get applet keys from sourceFiles (primary) or reviewScores (fallback)
+    const appletKeys: { key: string; label: string }[] = [];
+    if (moduleData?.sourceFiles) {
+      for (const sf of moduleData.sourceFiles) {
+        if (sf.type === "applet") {
+          const component = sourceFileToComponent(sf.label);
+          appletKeys.push({
+            key: component,
+            label: sf.label.replace(/^A/, "Applet "),
+          });
+        }
+      }
+    } else if (reviewScores) {
+      for (const rs of reviewScores) {
+        if (rs.reviewPass.startsWith("applet_")) {
+          appletKeys.push({
+            key: rs.reviewPass,
+            label: rs.reviewPass.replace("applet_", "Applet "),
+          });
+        }
+      }
+    }
+
+    return [...baseTabs, ...appletKeys];
+  }, [moduleData?.sourceFiles, reviewScores]);
+
+  // Decision handling (shared across tabs)
+  const handleDecisionChange = useCallback(
+    (id: string, status: string, comment: string) => {
+      setDecisions((prev) => {
+        const next = new Map(prev);
+        next.set(id, { status, comment });
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const saved = new Map(decisions);
+      for (const [id, decision] of Array.from(decisions)) {
+        if (decision.status === "pending") continue;
+        await reviewMutation({
+          recommendationId: id as Id<"recommendations">,
+          reviewStatus: decision.status,
+          vinayComment: decision.comment || undefined,
+        });
+        saved.delete(id);
+      }
+      setDecisions(saved);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!moduleData) return;
+    try {
+      const result = await completeMutation({ moduleId, version: moduleData.version });
+      alert(`Review complete! ${result.accepted} accepted, ${result.rejected} rejected.`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Complete failed");
+    }
+  };
+
+  // Recommendation badge counts per tab (must be before early returns)
+  const tabBadges = useMemo(() => {
+    if (!recommendations) return {};
+    const badges: Record<string, number> = {};
+    for (const r of recommendations) {
+      if (r.reviewStatus !== "pending") continue;
+      if (r.slideNumber == null) {
+        badges["global"] = (badges["global"] ?? 0) + 1;
+      } else {
+        badges[r.component] = (badges[r.component] ?? 0) + 1;
+      }
+    }
+    return badges;
+  }, [recommendations]);
 
   if (moduleData === undefined) {
     return (
@@ -60,9 +164,11 @@ export default function ModuleDetailPage() {
 
   const recCount = recommendations?.length ?? 0;
   const pendingCount = recommendations?.filter((r) => r.reviewStatus === "pending").length ?? 0;
+  const saveableCount = Array.from(decisions.values()).filter((d) => d.status !== "pending").length;
+  const needsDecisionCount = decisions.size - saveableCount;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-16">
       {/* Sub-header */}
       <div className="border-b border-gray-200/80 bg-white">
         <div className="max-w-[1400px] mx-auto px-6">
@@ -89,19 +195,27 @@ export default function ModuleDetailPage() {
               </div>
             )}
           </div>
+
           {/* Tabs */}
-          <div className="flex gap-0 -mb-px">
-            <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>
-              Overview
-            </TabButton>
-            <TabButton
-              active={activeTab === "recommendations"}
-              onClick={() => setActiveTab("recommendations")}
-              badge={pendingCount > 0 ? pendingCount : undefined}
-            >
-              Recommendations
-              {recCount > 0 && <span className="text-gray-300 ml-1">{recCount}</span>}
-            </TabButton>
+          <div className="flex gap-0 -mb-px overflow-x-auto">
+            {tabs.map((tab) => (
+              <TabButton
+                key={tab.key}
+                active={activeTab === tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                badge={tabBadges[tab.key]}
+              >
+                {tab.label}
+                {tab.key !== "overview" && recCount > 0 && recommendations && (() => {
+                  const count = tab.key === "global"
+                    ? recommendations.filter((r) => r.slideNumber == null).length
+                    : tab.key === "spine"
+                      ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
+                      : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
+                  return count > 0 ? <span className="text-gray-300 ml-1">{count}</span> : null;
+                })()}
+              </TabButton>
+            ))}
           </div>
         </div>
       </div>
@@ -115,16 +229,78 @@ export default function ModuleDetailPage() {
             gatekeeperData={gatekeeperData ?? null}
             flowMapData={flowMapData ?? []}
           />
-        ) : (
-          recommendations && recommendations.length > 0 ? (
-            <RecommendationsSection recommendations={recommendations} moduleId={moduleId} version={moduleData.version} />
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-12 text-center">
-              <p className="text-sm text-gray-400">No recommendations yet</p>
-            </div>
-          )
-        )}
+        ) : activeTab === "global" ? (
+          <GlobalContent
+            moduleData={moduleData}
+            reviewScores={reviewScores ?? []}
+            recommendations={recommendations ?? []}
+            decisions={decisions}
+            onDecisionChange={handleDecisionChange}
+          />
+        ) : activeTab === "spine" ? (
+          <SpineTabContent
+            reviewScores={reviewScores ?? []}
+            gatekeeperData={gatekeeperData ?? null}
+            slides={slidesWithUrls ?? []}
+            recommendations={recommendations ?? []}
+            decisions={decisions}
+            onDecisionChange={handleDecisionChange}
+          />
+        ) : activeTab.startsWith("applet_") ? (
+          <AppletTabContent
+            appletKey={activeTab}
+            appletLabel={tabs.find((t) => t.key === activeTab)?.label ?? activeTab}
+            reviewScores={reviewScores ?? []}
+            slides={slidesWithUrls ?? []}
+            recommendations={recommendations ?? []}
+            decisions={decisions}
+            onDecisionChange={handleDecisionChange}
+          />
+        ) : null}
       </main>
+
+      {/* Sticky save bar (shows when there are recommendations to review) */}
+      {recCount > 0 && activeTab !== "overview" && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200/80 px-6 py-3.5 z-20">
+          <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+            <div className="text-xs text-gray-500 flex items-center gap-3">
+              {saveableCount > 0 && (
+                <span className="text-amber-600 font-medium">{saveableCount} ready to save</span>
+              )}
+              {needsDecisionCount > 0 && (
+                <span className="text-orange-500">
+                  {needsDecisionCount} {needsDecisionCount === 1 ? "row needs" : "rows need"} Accept/Reject before saving
+                </span>
+              )}
+              {saveableCount === 0 && needsDecisionCount === 0 && pendingCount > 0 && (
+                <span className="text-gray-400">{pendingCount} recommendations still pending</span>
+              )}
+              {saveableCount === 0 && needsDecisionCount === 0 && pendingCount === 0 && (
+                <span className="text-emerald-600 font-medium">All recommendations reviewed</span>
+              )}
+            </div>
+            <div className="flex gap-2.5">
+              {saveableCount > 0 && (
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-all shadow-sm"
+                >
+                  {saving ? "Saving..." : `Save ${saveableCount} ${saveableCount === 1 ? "Decision" : "Decisions"}`}
+                </button>
+              )}
+              {pendingCount === 0 && saveableCount === 0 && needsDecisionCount === 0 && (
+                <button
+                  onClick={handleComplete}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-all shadow-sm"
+                >
+                  Complete Review
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -134,10 +310,10 @@ function TabButton({ active, onClick, badge, children }: {
   active: boolean; onClick: () => void; badge?: number; children: React.ReactNode;
 }) {
   return (
-    <button onClick={onClick} className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors ${active ? "text-gray-900" : "text-gray-400 hover:text-gray-600"}`}>
+    <button onClick={onClick} className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${active ? "text-gray-900" : "text-gray-400 hover:text-gray-600"}`}>
       <span className="flex items-center gap-1.5">
         {children}
-        {badge != null && (
+        {badge != null && badge > 0 && (
           <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">{badge}</span>
         )}
       </span>
@@ -146,7 +322,7 @@ function TabButton({ active, onClick, badge, children }: {
   );
 }
 
-/* --- Overview --- */
+/* --- Overview Tab (unchanged) --- */
 
 type ReviewScoreRow = {
   reviewPass: string;
@@ -246,6 +422,87 @@ function OverviewContent({
 
       {/* Row 4: Quadrant Scores */}
       <QuadrantScoreDisplay reviewScores={reviewScores} />
+    </div>
+  );
+}
+
+/* --- Global Tab --- */
+
+type Recommendation = {
+  _id: string;
+  directiveIndex: number;
+  slideNumber?: number;
+  issue: string;
+  quadrantId: string;
+  recommendedFix: string;
+  why?: string;
+  operationType: string;
+  confidence: string;
+  sourceAttribution?: string;
+  component: string;
+  pointsRecoverable?: number;
+  sourcePass: string;
+  priority?: number;
+  reviewStatus: string;
+  vinayComment?: string;
+};
+
+function GlobalContent({
+  moduleData,
+  reviewScores,
+  recommendations,
+  decisions,
+  onDecisionChange,
+}: {
+  moduleData: {
+    overallScore?: number;
+    overallPercentage?: number;
+    scoreBand?: string;
+  };
+  reviewScores: ReviewScoreRow[];
+  recommendations: Recommendation[];
+  decisions: Map<string, { status: string; comment: string }>;
+  onDecisionChange: (id: string, status: string, comment: string) => void;
+}) {
+  // Global = recommendations with null slideNumber (module-wide issues)
+  const globalRecs = recommendations.filter((r) => r.slideNumber == null);
+
+  // Build overall quadrant scores from all review passes
+  const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
+
+  return (
+    <div className="space-y-3">
+      <VerdictBanner
+        score={moduleData.overallScore ?? null}
+        maxPoints={100}
+        band={moduleData.scoreBand ?? null}
+        quadrantScores={allQuadrants}
+        componentLabel="Overall Module Score"
+      />
+
+      {globalRecs.length > 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-5">
+          <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Module-wide Recommendations ({globalRecs.length})
+          </h3>
+          <div className="space-y-2">
+            {globalRecs
+              .sort((a, b) => (b.pointsRecoverable ?? 0) - (a.pointsRecoverable ?? 0))
+              .map((r) => (
+                <InlineRecommendation
+                  key={r._id}
+                  recommendation={r}
+                  decision={decisions.get(r._id)}
+                  onDecisionChange={onDecisionChange}
+                />
+              ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm p-8 text-center">
+          <p className="text-sm text-gray-400">No module-wide recommendations</p>
+        </div>
+      )}
     </div>
   );
 }
