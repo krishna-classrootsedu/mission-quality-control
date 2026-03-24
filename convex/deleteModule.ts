@@ -16,6 +16,19 @@ export const deleteModule = mutation({
       throw new Error(`Module ${moduleId} v${version} not found`);
     }
 
+    // Delete PPTX files from Convex storage
+    if (module.sourceFiles) {
+      for (const sf of module.sourceFiles as Array<{ storageId?: string }>) {
+        if (sf.storageId) {
+          try {
+            await ctx.storage.delete(sf.storageId as any);
+          } catch {
+            // Storage file may already be deleted — continue
+          }
+        }
+      }
+    }
+
     // Soft-delete: mark module as deleted (agents will check this)
     await ctx.db.patch(module._id, {
       deleted: true,
@@ -88,6 +101,16 @@ export const deleteModule = mutation({
     for (const row of flows) {
       await ctx.db.delete(row._id);
       deleted++;
+    }
+
+    // agentActivity — clean up logs for this module
+    const activities = await ctx.db.query("agentActivity").collect();
+    for (const row of activities) {
+      const meta = row.metadata as Record<string, unknown> | undefined;
+      if (meta?.moduleId === moduleId) {
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
     }
 
     return { deleted, moduleId, version };
