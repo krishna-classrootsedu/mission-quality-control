@@ -348,6 +348,21 @@ http.route({
   }),
 });
 
+http.route({
+  path: "/update/finalize-review",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(internal.modules.finalizeReview, body);
+      return jsonResponse({ success: true, ...result });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // UPLOAD endpoints — thumbnail file storage
 // ---------------------------------------------------------------------------
@@ -391,7 +406,7 @@ const allPaths = [
   "/upload/generate-url",
   "/update/module-status", "/update/recommendation-review",
   "/update/complete-recommendation-review", "/update/flow-map-flag",
-  "/update/slide-thumbnail",
+  "/update/slide-thumbnail", "/update/finalize-review",
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
   "/query/review-scores", "/query/recommendations", "/query/flow-map",
   "/query/pipeline-summary", "/query/activity",

@@ -127,6 +127,8 @@ export default function UploadPage() {
 
   function canProceedStep1() { return title.trim().length > 0 && learningObjective.trim().length > 0 && submittedBy.trim().length > 0; }
   const anyAppletParsing = applets.some((a) => a.parsed?.parsing);
+  const lastAppletReady = applets.length === 0 || (applets[applets.length - 1].parsed && !applets[applets.length - 1].parsed!.parsing && applets[applets.length - 1].parsed!.slides.length > 0);
+  const canAddApplet = spineSlideCount > 0 && !spineParsed?.parsing && lastAppletReady && !anyAppletParsing;
   function canProceedStep2() {
     return !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error && !anyAppletParsing;
   }
@@ -320,7 +322,7 @@ export default function UploadPage() {
             <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
               <div className="flex items-center justify-between mb-2.5">
                 <label className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Applet Storyboards</label>
-                <button type="button" onClick={addApplet} disabled={spineSlideCount === 0}
+                <button type="button" onClick={addApplet} disabled={!canAddApplet}
                   className="text-[11px] font-medium text-stone-500 hover:text-stone-700 disabled:text-stone-300 disabled:cursor-not-allowed transition-colors">
                   + Add Applet
                 </button>

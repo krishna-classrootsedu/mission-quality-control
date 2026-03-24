@@ -354,6 +354,83 @@ export const submitModuleWithFlow = mutation({
   },
 });
 
+// Finalize review — calculate overall score from all reviewScores and transition to review_complete
+// Backup path: used when Integrator is paused. Orchestrator calls this directly.
+export const finalizeReview = internalMutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+    agentName: v.string(),
+    dedupKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (await isModuleDeleted(ctx, args.moduleId)) return { action: "module_deleted" };
+
+    // Dedup
+    const existing = await ctx.db
+      .query("agentActivity")
+      .withIndex("by_dedupKey", (q) => q.eq("dedupKey", `activity-${args.dedupKey}`))
+      .first();
+    if (existing) return { action: "duplicate" };
+
+    const module = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
+      .order("desc")
+      .first();
+    if (!module) throw new Error(`Module not found: ${args.moduleId}`);
+    if (module.version !== args.version) {
+      throw new Error(`Version mismatch: expected ${args.version}, found ${module.version}`);
+    }
+    if (module.status !== "all_reviews_complete") {
+      throw new Error(`Module status must be all_reviews_complete, got: ${module.status}`);
+    }
+
+    // Query all review scores for this module+version
+    const scores = await ctx.db
+      .query("reviewScores")
+      .withIndex("by_moduleId_version", (q) =>
+        q.eq("moduleId", args.moduleId).eq("version", args.version)
+      )
+      .collect();
+
+    if (scores.length === 0) {
+      throw new Error(`No review scores found for ${args.moduleId} v${args.version}`);
+    }
+
+    // Calculate overall score = average of all component totalPoints
+    const totalSum = scores.reduce((sum, s) => sum + s.totalPoints, 0);
+    const overallScore = Math.round(totalSum / scores.length);
+    const overallPercentage = overallScore; // Each component is out of 100
+
+    // Determine score band
+    let scoreBand: string;
+    if (overallScore >= 90) scoreBand = "Ship-ready";
+    else if (overallScore >= 75) scoreBand = "Upgradeable";
+    else if (overallScore >= 50) scoreBand = "Rework";
+    else scoreBand = "Redesign";
+
+    const now = new Date().toISOString();
+    await ctx.db.patch(module._id, {
+      status: "review_complete",
+      overallScore,
+      overallPercentage,
+      scoreBand,
+      updatedAt: now,
+    });
+
+    await logActivityIfNew(ctx, {
+      agentName: args.agentName,
+      action: "review_finalized",
+      message: `Review finalized for "${module.title}" — ${overallScore}/100 (${scoreBand})`,
+      dedupKey: `activity-${args.dedupKey}`,
+      metadata: { moduleId: args.moduleId, version: args.version, overallScore, scoreBand },
+    });
+
+    return { action: "finalized", overallScore, overallPercentage, scoreBand };
+  },
+});
+
 // Pipeline summary — count modules per status
 export const pipelineSummary = query({
   args: {},

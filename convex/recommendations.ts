@@ -2,7 +2,9 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
-// Batch-insert recommendations (called by Integrator)
+// Batch-insert recommendations (called by Integrator or Reviewers)
+// When called WITH score fields: updates module score + transitions to review_complete (Integrator path)
+// When called WITHOUT score fields: inserts recommendations only, no status change (Reviewer path)
 export const pushBatch = internalMutation({
   args: {
     moduleId: v.string(),
@@ -68,22 +70,25 @@ export const pushBatch = internalMutation({
       });
     }
 
-    // Update module with score data + status
-    const module = await ctx.db
-      .query("modules")
-      .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
-      .order("desc")
-      .first();
+    // Update module with score data + status (only when score fields provided — Integrator path)
+    // Reviewers call without score fields — no status change, just recommendation insertion
+    const hasScoreData = args.overallScore !== undefined && args.scoreBand !== undefined;
+    if (hasScoreData) {
+      const module = await ctx.db
+        .query("modules")
+        .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
+        .order("desc")
+        .first();
 
-    if (module && module.version === args.version) {
-      const patch: Record<string, unknown> = {
-        status: "review_complete",
-        updatedAt: now,
-      };
-      if (args.overallScore !== undefined) patch.overallScore = args.overallScore;
-      if (args.overallPercentage !== undefined) patch.overallPercentage = args.overallPercentage;
-      if (args.scoreBand !== undefined) patch.scoreBand = args.scoreBand;
-      await ctx.db.patch(module._id, patch);
+      if (module && module.version === args.version) {
+        await ctx.db.patch(module._id, {
+          status: "review_complete",
+          overallScore: args.overallScore,
+          overallPercentage: args.overallPercentage,
+          scoreBand: args.scoreBand,
+          updatedAt: now,
+        });
+      }
     }
 
     await logActivityIfNew(ctx, {
