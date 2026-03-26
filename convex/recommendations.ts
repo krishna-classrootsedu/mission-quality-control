@@ -165,6 +165,50 @@ export const completeVinayReview = mutation({
   },
 });
 
+// Add a custom review (called from frontend by human reviewer)
+export const addCustomReview = mutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+    issue: v.string(),
+    recommendedFix: v.string(),
+    component: v.string(),
+    slideNumber: v.optional(v.number()),
+    reviewerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Count existing recs to get next directiveIndex
+    const existing = await ctx.db
+      .query("recommendations")
+      .withIndex("by_moduleId_version", (q) =>
+        q.eq("moduleId", args.moduleId).eq("version", args.version)
+      )
+      .collect();
+
+    const now = new Date().toISOString();
+
+    await ctx.db.insert("recommendations", {
+      moduleId: args.moduleId,
+      version: args.version,
+      directiveIndex: existing.length,
+      slideNumber: args.slideNumber,
+      issue: args.issue,
+      quadrantId: "GENERAL",
+      recommendedFix: args.recommendedFix || "",
+      operationType: "EDIT",
+      confidence: "high",
+      sourceAttribution: args.reviewerName,
+      component: args.component,
+      sourcePass: "custom_review",
+      reviewStatus: "accepted",
+      reviewedAt: now,
+      agentName: args.reviewerName,
+      source: "reviewer",
+      createdAt: now,
+    });
+  },
+});
+
 // Query recommendations for a module+version
 export const byModule = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },

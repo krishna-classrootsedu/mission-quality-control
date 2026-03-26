@@ -14,6 +14,7 @@ import SpineTabContent from "@/components/SpineTabContent";
 import AppletTabContent from "@/components/AppletTabContent";
 import VerdictBanner from "@/components/VerdictBanner";
 import InlineRecommendation from "@/components/InlineRecommendation";
+import CustomReviewForm from "@/components/CustomReviewForm";
 
 export default function ModuleDetailPage() {
   const params = useParams();
@@ -51,6 +52,7 @@ export default function ModuleDetailPage() {
     const baseTabs = [
       { key: "overview", label: "Overview" },
       { key: "flow", label: "Flow" },
+      { key: "custom", label: "Custom" },
       { key: "global", label: "Global" },
       { key: "spine", label: "Spine" },
     ];
@@ -200,12 +202,14 @@ export default function ModuleDetailPage() {
                 badge={tabBadges[tab.key]}
               >
                 {tab.label}
-                {tab.key !== "overview" && tab.key !== "flow" && recCount > 0 && recommendations && (() => {
-                  const count = tab.key === "global"
-                    ? recommendations.filter((r) => r.slideNumber == null).length
-                    : tab.key === "spine"
-                      ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
-                      : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
+                {tab.key !== "overview" && tab.key !== "flow" && recommendations && (() => {
+                  const count = tab.key === "custom"
+                    ? recommendations.filter((r) => r.source === "reviewer").length
+                    : tab.key === "global"
+                      ? recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer").length
+                      : tab.key === "spine"
+                        ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
+                        : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
                   return count > 0 ? <span className="text-stone-300 ml-1">{count}</span> : null;
                 })()}
               </TabButton>
@@ -233,6 +237,14 @@ export default function ModuleDetailPage() {
               />
             ) : activeTab === "flow" ? (
               <FlowTabContent flowMapData={flowMapData ?? []} />
+            ) : activeTab === "custom" ? (
+              <CustomTabContent
+                moduleId={moduleId}
+                version={moduleData.version}
+                sourceFiles={moduleData.sourceFiles}
+                slides={slidesWithUrls ?? []}
+                recommendations={recommendations ?? []}
+              />
             ) : activeTab === "global" ? (
               <GlobalContent
                 moduleData={moduleData}
@@ -613,6 +625,111 @@ function FlowTabContent({ flowMapData }: { flowMapData: React.ComponentProps<typ
   return <FlowMapTable steps={flowMapData} />;
 }
 
+/* --- Custom Tab --- */
+
+type CustomRecommendation = {
+  _id: string;
+  issue: string;
+  recommendedFix: string;
+  component: string;
+  slideNumber?: number;
+  sourceAttribution?: string;
+  agentName?: string;
+  source?: string;
+  createdAt: string;
+};
+
+function CustomTabContent({
+  moduleId,
+  version,
+  sourceFiles,
+  slides,
+  recommendations,
+}: {
+  moduleId: string;
+  version: number;
+  sourceFiles?: { type: string; label: string }[];
+  slides: { slideNumber: number; sourceFile?: string }[];
+  recommendations: CustomRecommendation[];
+}) {
+  const addCustomReview = useMutation(api.recommendations.addCustomReview);
+  const customRecs = recommendations.filter((r) => r.source === "reviewer");
+
+  const handleSubmit = async (data: {
+    issue: string;
+    recommendedFix: string;
+    slideNumber?: number;
+    component: string;
+  }) => {
+    await addCustomReview({
+      moduleId,
+      version,
+      issue: data.issue,
+      recommendedFix: data.recommendedFix,
+      component: data.component,
+      slideNumber: data.slideNumber,
+      reviewerName: "Vinay",
+    });
+  };
+
+  const componentLabel = (component: string) => {
+    if (component === "module") return "Module-wide";
+    if (component === "spine") return "Spine";
+    const match = component.match(/^applet_(\d+)$/);
+    if (match) return `Applet ${match[1]}`;
+    return component;
+  };
+
+  return (
+    <div className="space-y-3">
+      <CustomReviewForm
+        sourceFiles={sourceFiles}
+        slides={slides}
+        onSubmit={handleSubmit}
+      />
+
+      {customRecs.length > 0 ? (
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+          <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] mb-3">
+            Custom Reviews ({customRecs.length})
+          </h3>
+          <div className="space-y-2">
+            {customRecs.map((r) => (
+              <div
+                key={r._id}
+                className="border border-stone-200 rounded-lg border-l-2 border-l-stone-600 bg-white px-3 py-2.5"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-medium text-stone-500 flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-stone-500" />
+                    {componentLabel(r.component)}
+                    {r.slideNumber != null && (
+                      <span className="font-mono text-stone-400"> &middot; Slide {r.slideNumber}</span>
+                    )}
+                  </span>
+                  <span className="text-[11px] text-stone-300 ml-auto">
+                    {r.sourceAttribution ?? r.agentName}
+                  </span>
+                </div>
+                <p className="text-[13px] text-stone-700 leading-relaxed">{r.issue}</p>
+                {r.recommendedFix && (
+                  <p className="text-[13px] text-stone-500 mt-1 leading-relaxed">
+                    <span className="font-medium text-stone-400">Fix:</span> {r.recommendedFix}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-8 text-center">
+          <p className="text-sm text-stone-400">No custom reviews yet</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* --- Global Tab --- */
 
 type Recommendation = {
@@ -632,6 +749,8 @@ type Recommendation = {
   priority?: number;
   reviewStatus: string;
   vinayComment?: string;
+  source?: string;
+  agentName?: string;
 };
 
 function GlobalContent({
@@ -651,7 +770,7 @@ function GlobalContent({
   decisions: Map<string, { status: string; comment: string }>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
 }) {
-  const globalRecs = recommendations.filter((r) => r.slideNumber == null);
+  const globalRecs = recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer");
   const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
 
   return (

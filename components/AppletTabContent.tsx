@@ -53,6 +53,7 @@ type Recommendation = {
   priority?: number;
   reviewStatus: string;
   vinayComment?: string;
+  source?: string;
 };
 
 type GatekeeperResult = {

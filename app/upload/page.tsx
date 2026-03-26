@@ -11,7 +11,7 @@ import {
   SourceSlide,
 } from "@/lib/moduleFlow";
 
-const GRADES = ["3", "4", "5", "6"];
+const GRADES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
 const TOPICS = [
   "Fractions", "Decimals", "Geometry", "Measurement",
   "Data Handling", "Whole Numbers", "Algebra", "Other",
