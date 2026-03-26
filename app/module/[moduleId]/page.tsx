@@ -6,12 +6,10 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { motion, AnimatePresence } from "framer-motion";
-import { sourceFileToComponent } from "@/lib/types";
+import { sourceFileToComponent, QUADRANTS } from "@/lib/types";
 import StageBadge from "@/components/StageBadge";
 import ScoreBandBadge from "@/components/ScoreBandBadge";
 import FlowMapTable from "@/components/FlowMapTable";
-import QuadrantScoreDisplay from "@/components/QuadrantScoreDisplay";
-import ComponentScoreSummary from "@/components/ComponentScoreSummary";
 import SpineTabContent from "@/components/SpineTabContent";
 import AppletTabContent from "@/components/AppletTabContent";
 import VerdictBanner from "@/components/VerdictBanner";
@@ -33,8 +31,8 @@ export default function ModuleDetailPage() {
     api.recommendations.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
-  const gatekeeperData = useQuery(
-    api.gatekeeperQuery.byModule,
+  const allGateResults = useQuery(
+    api.gatekeeperQuery.allByModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
   const flowMapData = useQuery(
@@ -52,6 +50,7 @@ export default function ModuleDetailPage() {
   const tabs = useMemo(() => {
     const baseTabs = [
       { key: "overview", label: "Overview" },
+      { key: "flow", label: "Flow" },
       { key: "global", label: "Global" },
       { key: "spine", label: "Spine" },
     ];
@@ -201,7 +200,7 @@ export default function ModuleDetailPage() {
                 badge={tabBadges[tab.key]}
               >
                 {tab.label}
-                {tab.key !== "overview" && recCount > 0 && recommendations && (() => {
+                {tab.key !== "overview" && tab.key !== "flow" && recCount > 0 && recommendations && (() => {
                   const count = tab.key === "global"
                     ? recommendations.filter((r) => r.slideNumber == null).length
                     : tab.key === "spine"
@@ -230,9 +229,10 @@ export default function ModuleDetailPage() {
               <OverviewContent
                 moduleData={moduleData}
                 reviewScores={reviewScores ?? []}
-                gatekeeperData={gatekeeperData ?? null}
-                flowMapData={flowMapData ?? []}
+                allGateResults={allGateResults ?? []}
               />
+            ) : activeTab === "flow" ? (
+              <FlowTabContent flowMapData={flowMapData ?? []} />
             ) : activeTab === "global" ? (
               <GlobalContent
                 moduleData={moduleData}
@@ -244,7 +244,7 @@ export default function ModuleDetailPage() {
             ) : activeTab === "spine" ? (
               <SpineTabContent
                 reviewScores={reviewScores ?? []}
-                gatekeeperData={gatekeeperData ?? null}
+                gatekeeperData={(allGateResults ?? []).find((g) => g.component === "module") ?? null}
                 slides={slidesWithUrls ?? []}
                 recommendations={recommendations ?? []}
                 decisions={decisions}
@@ -255,6 +255,7 @@ export default function ModuleDetailPage() {
                 appletKey={activeTab}
                 appletLabel={tabs.find((t) => t.key === activeTab)?.label ?? activeTab}
                 reviewScores={reviewScores ?? []}
+                gatekeeperData={(allGateResults ?? []).find((g) => g.component === activeTab) ?? null}
                 slides={slidesWithUrls ?? []}
                 recommendations={recommendations ?? []}
                 decisions={decisions}
@@ -359,6 +360,7 @@ type ReviewScoreRow = {
 };
 
 type GatekeeperResult = {
+  component: string;
   passed: boolean;
   ruleResults: { ruleId: string; ruleName: string; passed: boolean; evidence?: string; slideNumbers?: number[] }[];
 };
@@ -366,8 +368,7 @@ type GatekeeperResult = {
 function OverviewContent({
   moduleData,
   reviewScores,
-  gatekeeperData,
-  flowMapData,
+  allGateResults,
 }: {
   moduleData: {
     learningObjective: string;
@@ -376,62 +377,240 @@ function OverviewContent({
     scoreBand?: string;
   };
   reviewScores: ReviewScoreRow[];
-  gatekeeperData: GatekeeperResult | null;
-  flowMapData: React.ComponentProps<typeof FlowMapTable>["steps"];
+  allGateResults: GatekeeperResult[];
 }) {
+  const [activeComponent, setActiveComponent] = useState<string | null>(null);
+  const [expandedQuadrant, setExpandedQuadrant] = useState<string | null>(null);
+
+  const moduleGates = allGateResults.find((g) => g.component === "module");
+  const appletGates = allGateResults
+    .filter((g) => g.component.startsWith("applet_"))
+    .sort((a, b) => a.component.localeCompare(b.component));
+
+  const components = reviewScores.map((rs) => rs.reviewPass);
+  const selected = activeComponent ?? components[0];
+  const selectedScores = reviewScores.find((rs) => rs.reviewPass === selected);
+
+  // Build applet gate names from first applet (all applets share same 5 gate names)
+  const appletGateNames = appletGates.length > 0
+    ? appletGates[0].ruleResults.map((r) => ({ id: r.ruleId, name: r.ruleName }))
+    : [];
+
   return (
     <div className="space-y-3">
-      {/* Row 1: LO + Gatekeeper */}
-      <div className="grid grid-cols-12 gap-3">
-        <div className="col-span-5 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
-          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Learning Objective</span>
-          <p className="text-[13px] text-stone-600 leading-relaxed mt-2">{moduleData.learningObjective}</p>
-        </div>
-
-        <div className="col-span-7 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Gatekeeper Rules</span>
-            {gatekeeperData && (
-              <span className={`text-[11px] font-medium ${
-                gatekeeperData.passed ? "text-stone-600" : "text-red-500"
-              }`}>
-                {gatekeeperData.passed ? "PASSED" : "FAILED"}
-              </span>
-            )}
-          </div>
-          {gatekeeperData ? (
-            <div className="grid grid-cols-3 gap-x-4 gap-y-1">
-              {gatekeeperData.ruleResults.map((rule) => (
-                <div key={rule.ruleId} className="flex items-center gap-2 py-0.5">
-                  <span className={`text-[11px] shrink-0 ${
-                    rule.passed ? "text-stone-400" : "text-red-500"
-                  }`}>
-                    {rule.passed ? "\u2713" : "\u2717"}
-                  </span>
-                  <span className="text-[13px] text-stone-600 truncate">{rule.ruleName}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-stone-300">Not yet checked</p>
-          )}
+      {/* Row 1: LO — full width */}
+      <div className="bg-white rounded-lg border border-stone-200 shadow-subtle px-5 py-3">
+        <div className="flex items-start gap-3">
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] shrink-0 mt-0.5">LO</span>
+          <p className="text-[13px] text-stone-600 leading-relaxed">{moduleData.learningObjective}</p>
         </div>
       </div>
 
-      {flowMapData.length > 0 && (
-        <FlowMapTable steps={flowMapData} />
+      {/* Row 2: Gate Check — module list (left) + applet table (right) */}
+      <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+        <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Gate Check</span>
+
+        {moduleGates || appletGates.length > 0 ? (
+          <div className="flex gap-8 mt-3">
+            {/* Left: Module gates — table format matching applet side */}
+            {moduleGates && (
+              <div className="shrink-0" style={{ width: appletGates.length > 0 ? "35%" : "100%" }}>
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-[11px] font-medium text-stone-500 uppercase tracking-wider pb-1.5">Module</th>
+                      <th className="text-center text-[11px] font-medium text-stone-500 pb-1.5 w-[50px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {moduleGates.ruleResults.map((rule) => (
+                      <tr key={rule.ruleId} className="border-t border-stone-100/60">
+                        <td className="text-[12px] text-stone-600 py-1.5">{rule.ruleName}</td>
+                        <td className="text-center py-1.5">
+                          <span className={`text-[12px] ${rule.passed ? "text-stone-400" : "text-red-400 font-semibold"}`}>
+                            {rule.passed ? "\u2713" : "\u2717"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-stone-200">
+                      <td className="text-[11px] font-medium text-stone-500 py-1.5">Result</td>
+                      <td className="text-center py-1.5">
+                        <span className={`text-[11px] font-semibold ${moduleGates.passed ? "text-stone-600" : "text-red-500"}`}>
+                          {moduleGates.passed ? "Pass" : "Fail"}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Divider */}
+            {moduleGates && appletGates.length > 0 && (
+              <div className="w-px bg-stone-200 shrink-0" />
+            )}
+
+            {/* Right: Applet gates — same table format */}
+            {appletGates.length > 0 && (
+              <div className="flex-1 min-w-0">
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-[11px] font-medium text-stone-500 uppercase tracking-wider pb-1.5">Applets</th>
+                      {appletGates.map((ag) => (
+                        <th key={ag.component} className="text-center text-[11px] font-medium text-stone-500 pb-1.5 px-2 w-[50px]">
+                          {ag.component.replace("applet_", "A")}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appletGateNames.map((gate) => (
+                      <tr key={gate.id} className="border-t border-stone-100/60">
+                        <td className="text-[12px] text-stone-600 py-1.5">{gate.name}</td>
+                        {appletGates.map((ag) => {
+                          const rule = ag.ruleResults.find((r) => r.ruleId === gate.id);
+                          return (
+                            <td key={ag.component} className="text-center py-1.5 px-2">
+                              <span className={`text-[12px] ${rule?.passed ? "text-stone-400" : "text-red-400 font-semibold"}`}>
+                                {rule?.passed ? "\u2713" : "\u2717"}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    <tr className="border-t border-stone-200">
+                      <td className="text-[11px] font-medium text-stone-500 py-1.5">Result</td>
+                      {appletGates.map((ag) => (
+                        <td key={ag.component} className="text-center py-1.5 px-2">
+                          <span className={`text-[11px] font-semibold ${ag.passed ? "text-stone-600" : "text-red-500"}`}>
+                            {ag.passed ? "Pass" : "Fail"}
+                          </span>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-stone-300 mt-3">Not yet checked</p>
+        )}
+      </div>
+
+      {/* Row 3: Quadrant Scores — 4-col grid with component pills */}
+      {reviewScores.length > 0 ? (
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Quadrant Scores</span>
+            {components.length > 1 && (
+              <div className="flex gap-1">
+                {components.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setActiveComponent(c)}
+                    className={`px-2.5 py-1 rounded text-[11px] font-medium transition-all ${
+                      selected === c
+                        ? "bg-stone-800 text-white"
+                        : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                    }`}
+                  >
+                    {c === "spine" ? "Spine" : c.replace("applet_", "A")}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {selectedScores && (
+            <div className="grid grid-cols-4 gap-3">
+              {QUADRANTS.map((q) => {
+                const data = selectedScores.quadrantScores.find((qs) => qs.quadrantId === q.id);
+                const score = data?.score ?? 0;
+                const max = data?.maxPoints ?? q.maxPoints;
+                const pct = max > 0 ? Math.round((score / max) * 100) : 0;
+                const isExpanded = expandedQuadrant === `${selected}-${q.id}`;
+
+                return (
+                  <div key={q.id}>
+                    <button
+                      onClick={() => setExpandedQuadrant(isExpanded ? null : `${selected}-${q.id}`)}
+                      className={`w-full text-left rounded-lg p-3 transition-all border ${
+                        isExpanded
+                          ? "border-stone-300 shadow-card bg-stone-50/50"
+                          : "border-stone-200 hover:border-stone-300 hover:shadow-subtle"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-stone-500">{q.id}</span>
+                        <span className="text-[11px] text-stone-400">{q.name}</span>
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1.5">
+                        <span className="font-display text-xl text-stone-900 tabular-nums">{score}</span>
+                        <span className="text-[11px] text-stone-300 font-mono">/{max}</span>
+                        <span className="text-[11px] text-stone-400 ml-auto tabular-nums">{pct}%</span>
+                      </div>
+                      <div className="w-full h-1 bg-stone-100 rounded-full overflow-hidden mt-1.5">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                          className={`h-full rounded-full ${
+                            pct >= 90 ? "bg-stone-800" : pct >= 75 ? "bg-stone-500" : pct >= 50 ? "bg-stone-400" : "bg-red-400"
+                          }`}
+                        />
+                      </div>
+                    </button>
+                    <AnimatePresence>
+                      {isExpanded && data && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-1.5 border border-stone-100 rounded-lg p-2.5 space-y-0.5">
+                            {data.criteriaScores.map((cs) => (
+                              <div key={cs.criterionId} className="flex items-center gap-2">
+                                <span className="text-[11px] font-mono text-stone-400 w-5 shrink-0">{cs.criterionId}</span>
+                                <span className="text-[11px] text-stone-600 flex-1 min-w-0 truncate">{cs.criterionName}</span>
+                                <span className="text-[11px] font-mono text-stone-400 shrink-0">{cs.score}/{cs.maxPoints}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">Quadrant Scores</span>
+          <p className="text-sm text-stone-300 mt-2">No scores yet</p>
+        </div>
       )}
-
-      <ComponentScoreSummary
-        overallScore={moduleData.overallScore ?? null}
-        overallPercentage={moduleData.overallPercentage ?? null}
-        scoreBand={moduleData.scoreBand ?? null}
-        reviewScores={reviewScores}
-      />
-
-      <QuadrantScoreDisplay reviewScores={reviewScores} />
     </div>
   );
+}
+
+/* --- Flow Tab --- */
+
+function FlowTabContent({ flowMapData }: { flowMapData: React.ComponentProps<typeof FlowMapTable>["steps"] }) {
+  if (flowMapData.length === 0) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-8 text-center">
+        <p className="text-sm text-stone-400">Flow map not yet generated</p>
+      </div>
+    );
+  }
+  return <FlowMapTable steps={flowMapData} />;
 }
 
 /* --- Global Tab --- */

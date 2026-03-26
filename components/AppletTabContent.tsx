@@ -1,6 +1,7 @@
 "use client";
 
 import VerdictBanner from "./VerdictBanner";
+import GateReport from "./GateReport";
 import SlideReviewList from "./SlideReviewList";
 import { sourceFileToComponent } from "@/lib/types";
 
@@ -54,12 +55,19 @@ type Recommendation = {
   vinayComment?: string;
 };
 
+type GatekeeperResult = {
+  component: string;
+  passed: boolean;
+  ruleResults: { ruleId: string; ruleName: string; passed: boolean; evidence?: string; slideNumbers?: number[] }[];
+};
+
 type Decision = { status: string; comment: string };
 
 export default function AppletTabContent({
   appletKey,
   appletLabel,
   reviewScores,
+  gatekeeperData,
   slides,
   recommendations,
   decisions,
@@ -68,6 +76,7 @@ export default function AppletTabContent({
   appletKey: string;
   appletLabel: string;
   reviewScores: ReviewScoreRow[];
+  gatekeeperData: GatekeeperResult | null;
   slides: Slide[];
   recommendations: Recommendation[];
   decisions: Map<string, Decision>;
@@ -91,6 +100,15 @@ export default function AppletTabContent({
         quadrantScores={appletScores?.quadrantScores ?? []}
         componentLabel={`${appletLabel} Review`}
       />
+
+      {gatekeeperData && (
+        <GateReport
+          gates={gatekeeperData.ruleResults}
+          overallPassed={gatekeeperData.passed}
+          title={`${appletLabel} Gates`}
+          defaultCollapsed
+        />
+      )}
 
       <SlideReviewList
         slides={appletSlides}

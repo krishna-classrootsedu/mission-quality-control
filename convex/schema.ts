@@ -87,10 +87,11 @@ export default defineSchema({
     .index("by_moduleId_version", ["moduleId", "version"])
     .index("by_moduleId_version_slide", ["moduleId", "version", "slideNumber"]),
 
-  // Binary rule check — one per module+version
+  // Binary rule check — one row per component (module, applet_1, applet_2, etc.)
   gatekeeperResults: defineTable({
     moduleId: v.string(),
     version: v.number(),
+    component: v.string(), // "module" | "applet_1" | "applet_2" etc.
     passed: v.boolean(),
     ruleResults: v.array(
       v.object({
@@ -106,6 +107,7 @@ export default defineSchema({
     dedupKey: v.string(),
   })
     .index("by_moduleId_version", ["moduleId", "version"])
+    .index("by_moduleId_version_component", ["moduleId", "version", "component"])
     .index("by_dedupKey", ["dedupKey"]),
 
   // Per-component scoring — spine + applet rows per module+version

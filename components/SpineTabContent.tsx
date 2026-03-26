@@ -97,7 +97,7 @@ export default function SpineTabContent({
         <GateReport
           gates={gatekeeperData.ruleResults}
           overallPassed={gatekeeperData.passed}
-          title="Module Gates (9)"
+          title="Module Gates"
           defaultCollapsed
         />
       )}
