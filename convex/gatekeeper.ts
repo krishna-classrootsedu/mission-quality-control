@@ -6,6 +6,7 @@ export const push = internalMutation({
   args: {
     moduleId: v.string(),
     version: v.number(),
+    component: v.string(), // "module" | "applet_1" | "applet_2" etc.
     passed: v.boolean(),
     ruleResults: v.array(
       v.object({
@@ -35,6 +36,7 @@ export const push = internalMutation({
     const id = await ctx.db.insert("gatekeeperResults", {
       moduleId: args.moduleId,
       version: args.version,
+      component: args.component,
       passed: args.passed,
       ruleResults: args.ruleResults,
       agentName: args.agentName,
@@ -42,23 +44,26 @@ export const push = internalMutation({
       dedupKey: args.dedupKey,
     });
 
-    // If gatekeeper fails, auto-generate recommendations from failed rules
+    // Auto-generate recommendations from failed rules
     if (!args.passed) {
       const failedRules = args.ruleResults.filter((r) => !r.passed);
       for (let i = 0; i < failedRules.length; i++) {
         const rule = failedRules[i];
+        const isModule = args.component === "module";
         await ctx.db.insert("recommendations", {
           moduleId: args.moduleId,
           version: args.version,
           directiveIndex: i,
           slideNumber: rule.slideNumbers?.[0],
-          issue: `Dealbreaker: ${rule.ruleName}`,
+          issue: `${isModule ? "Module" : "Applet"} gate failure: ${rule.ruleName}`,
           quadrantId: "GATE",
           recommendedFix: `Fix: ${rule.ruleName}. ${rule.evidence ?? ""}`,
-          why: "Binary gate rule — must pass before any scoring can proceed.",
+          why: isModule
+            ? "Module gate failure — must pass before scoring can proceed."
+            : "Applet gate failure — this applet is blocked from scoring.",
           operationType: "EDIT",
           confidence: "high",
-          component: "spine",
+          component: isModule ? "spine" : args.component,
           sourcePass: "gatekeeper",
           reviewStatus: "pending",
           agentName: args.agentName,
@@ -67,29 +72,32 @@ export const push = internalMutation({
       }
     }
 
-    // Update module status
-    const module = await ctx.db
-      .query("modules")
-      .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
-      .order("desc")
-      .first();
+    // Only update module status for module-level gates (not per-applet)
+    if (args.component === "module") {
+      const module = await ctx.db
+        .query("modules")
+        .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
+        .order("desc")
+        .first();
 
-    if (module && module.version === args.version) {
-      await ctx.db.patch(module._id, {
-        status: args.passed ? "gatekeeper_pass" : "gatekeeper_fail",
-        updatedAt: now,
-      });
+      if (module && module.version === args.version) {
+        await ctx.db.patch(module._id, {
+          status: args.passed ? "gatekeeper_pass" : "gatekeeper_fail",
+          updatedAt: now,
+        });
+      }
     }
 
     const failCount = args.ruleResults.filter((r) => !r.passed).length;
+    const componentLabel = args.component === "module" ? "module" : args.component.replace("_", " ");
     await logActivityIfNew(ctx, {
       agentName: args.agentName,
       action: args.passed ? "gatekeeper_pass" : "gatekeeper_fail",
-      message: `Gatekeeper ${args.passed ? "PASSED" : `FAILED (${failCount} rules)`} for "${args.moduleId}" v${args.version}`,
+      message: `Gatekeeper ${args.passed ? "PASSED" : `FAILED (${failCount} rules)`} ${componentLabel} gates for "${args.moduleId}" v${args.version}`,
       dedupKey: `activity-${args.dedupKey}`,
-      metadata: { moduleId: args.moduleId, version: args.version, passed: args.passed, failCount },
+      metadata: { moduleId: args.moduleId, version: args.version, component: args.component, passed: args.passed, failCount },
     });
 
-    return { action: "created", id, passed: args.passed };
+    return { action: "created", id, passed: args.passed, component: args.component };
   },
 });

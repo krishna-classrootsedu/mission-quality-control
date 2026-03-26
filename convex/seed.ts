@@ -1,6 +1,6 @@
 import { mutation, internalMutation } from "./_generated/server";
 
-// Clear ALL data from ALL tables — use for resetting prod before schema migration
+// Clear ALL data from ALL tables + file storage — full reset
 export const clearAll = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -13,6 +13,12 @@ export const clearAll = internalMutation({
       }
       counts[table] = rows.length;
     }
+    // Clear all files from storage (PPTXs + thumbnails)
+    const files = await ctx.db.system.query("_storage").collect();
+    for (const file of files) {
+      await ctx.storage.delete(file._id);
+    }
+    counts["_storage"] = files.length;
     return counts;
   },
 });
@@ -61,6 +67,10 @@ export const seedAll = mutation({
       spineComplete: true,
       totalApplets: 1,
       completedAppletReviews: 1,
+      sourceFiles: [
+        { filename: "G1C4M08-spine.pptx", type: "spine", label: "spine", slideCount: 26 },
+        { filename: "G1C4M08-A1-comparison.pptx", type: "applet", label: "A1", afterSpineSlide: 10, slideCount: 4 },
+      ],
       submittedBy: "Priya",
       submittedAt: "2026-03-15T09:00:00Z",
       updatedAt: now,
@@ -80,37 +90,38 @@ export const seedAll = mutation({
     });
 
     // 3. Parsed slides (30 slides)
+    // Slides 1-10 = spine before applet, 11-14 = applet A1, 15-30 = spine after applet
     const slideData = [
-      { n: 1, text: "Introduction to Fractions — Welcome Screen", notes: "Warm greeting, set context for lesson", layout: "Title Slide" },
-      { n: 2, text: "What You'll Learn Today — Learning Objectives", notes: "Display LO, connect to prior knowledge of division", layout: "Content" },
-      { n: 3, text: "Pizza Party! — Dividing Things Equally", notes: "Anchor activity: pizza split among friends", layout: "Content" },
-      { n: 4, text: "What is a Fraction? — Parts of a Whole", notes: "Define numerator and denominator with visual", layout: "Content" },
-      { n: 5, text: "Fraction Vocabulary — Numerator & Denominator", notes: "Interactive labeling exercise", layout: "Activity" },
-      { n: 6, text: "Fractions in Daily Life — Real Examples", notes: "Photos of Indonesian food, markets, daily objects", layout: "Content" },
-      { n: 7, text: "Let's Try! — Identify the Fraction", notes: "Drag-and-drop matching exercise", layout: "Activity" },
-      { n: 8, text: "Halves and Quarters — Visual Models", notes: "Circle and rectangle models for 1/2, 1/4", layout: "Content" },
-      { n: 9, text: "Practice — Shade the Fraction", notes: "Students shade shapes to show given fractions", layout: "Activity" },
-      { n: 10, text: "Checkpoint 1 — Quick Quiz", notes: "3 MCQ questions on fraction identification", layout: "Assessment" },
-      { n: 11, text: "Thirds and Sixths — More Models", notes: "Extend to 1/3, 1/6 with fraction bars", layout: "Content" },
-      { n: 12, text: "Fraction Wall — Comparing Sizes", notes: "Interactive fraction wall visualization", layout: "Activity" },
-      { n: 13, text: "Which is Bigger? — Comparing Fractions", notes: "Like denominators comparison strategy", layout: "Content" },
-      { n: 14, text: "Comparing Game — Pick the Larger Fraction", notes: "Gamified comparison with points", layout: "Activity" },
-      { n: 15, text: "Story Time — Rina's Birthday Cake", notes: "Narrative problem: cake divided among guests", layout: "Content" },
-      { n: 16, text: "Solve It — How Much Cake?", notes: "Guided problem solving with hints", layout: "Activity" },
-      { n: 17, text: "Equivalent Fractions — Same Size, Different Names", notes: "Introduce concept with visual proof", layout: "Content" },
-      { n: 18, text: "Match the Pairs — Equivalent Fractions", notes: "Matching exercise with immediate feedback", layout: "Activity" },
-      { n: 19, text: "Checkpoint 2 — Mid-Module Assessment", notes: "5 mixed questions on comparison and equivalence", layout: "Assessment" },
-      { n: 20, text: "Fractions on a Number Line", notes: "Place fractions on 0-1 number line", layout: "Content" },
-      { n: 21, text: "Number Line Challenge", notes: "Drag fractions to correct position", layout: "Activity" },
-      { n: 22, text: "Unit Fractions — Building Blocks", notes: "Explain unit fractions as building blocks", layout: "Content" },
-      { n: 23, text: "Build a Fraction — Using Unit Fractions", notes: "Additive composition with fraction pieces", layout: "Content" },
-      { n: 24, text: "Real World Problem — Sharing Equally", notes: "Word problem set in Indonesian school context", layout: "Content" },
-      { n: 25, text: "Practice Set — Mixed Problems", notes: "6 problems of increasing difficulty", layout: "Activity" },
-      { n: 26, text: "Challenge Round — Fraction Puzzles", notes: "Extension for fast finishers", layout: "Content" },
-      { n: 27, text: "Checkpoint 3 — Final Assessment", notes: "8 questions covering all topics", layout: "Assessment" },
-      { n: 28, text: "What We Learned — Summary", notes: "Recap key concepts with visual summary", layout: "Content" },
-      { n: 29, text: "Great Job! — Achievement Badge", notes: "Celebration screen with badge earned", layout: "Content" },
-      { n: 30, text: "What's Next? — Preview of Adding Fractions", notes: "Teaser for next module", layout: "Assessment" },
+      { n: 1, text: "Introduction to Fractions — Welcome Screen", notes: "Warm greeting, set context for lesson", layout: "Title Slide", src: "spine" },
+      { n: 2, text: "What You'll Learn Today — Learning Objectives", notes: "Display LO, connect to prior knowledge of division", layout: "Content", src: "spine" },
+      { n: 3, text: "Pizza Party! — Dividing Things Equally", notes: "Anchor activity: pizza split among friends", layout: "Content", src: "spine" },
+      { n: 4, text: "What is a Fraction? — Parts of a Whole", notes: "Define numerator and denominator with visual", layout: "Content", src: "spine" },
+      { n: 5, text: "Fraction Vocabulary — Numerator & Denominator", notes: "Interactive labeling exercise", layout: "Activity", src: "spine" },
+      { n: 6, text: "Fractions in Daily Life — Real Examples", notes: "Photos of Indonesian food, markets, daily objects", layout: "Content", src: "spine" },
+      { n: 7, text: "Let's Try! — Identify the Fraction", notes: "Drag-and-drop matching exercise", layout: "Activity", src: "spine" },
+      { n: 8, text: "Halves and Quarters — Visual Models", notes: "Circle and rectangle models for 1/2, 1/4", layout: "Content", src: "spine" },
+      { n: 9, text: "Practice — Shade the Fraction", notes: "Students shade shapes to show given fractions", layout: "Activity", src: "spine" },
+      { n: 10, text: "Checkpoint 1 — Quick Quiz", notes: "3 MCQ questions on fraction identification", layout: "Assessment", src: "spine" },
+      { n: 11, text: "Thirds and Sixths — More Models", notes: "Extend to 1/3, 1/6 with fraction bars", layout: "Content", src: "A1" },
+      { n: 12, text: "Fraction Wall — Comparing Sizes", notes: "Interactive fraction wall visualization", layout: "Activity", src: "A1" },
+      { n: 13, text: "Which is Bigger? — Comparing Fractions", notes: "Like denominators comparison strategy", layout: "Content", src: "A1" },
+      { n: 14, text: "Comparing Game — Pick the Larger Fraction", notes: "Gamified comparison with points", layout: "Activity", src: "A1" },
+      { n: 15, text: "Story Time — Rina's Birthday Cake", notes: "Narrative problem: cake divided among guests", layout: "Content", src: "spine" },
+      { n: 16, text: "Solve It — How Much Cake?", notes: "Guided problem solving with hints", layout: "Activity", src: "spine" },
+      { n: 17, text: "Equivalent Fractions — Same Size, Different Names", notes: "Introduce concept with visual proof", layout: "Content", src: "spine" },
+      { n: 18, text: "Match the Pairs — Equivalent Fractions", notes: "Matching exercise with immediate feedback", layout: "Activity", src: "spine" },
+      { n: 19, text: "Checkpoint 2 — Mid-Module Assessment", notes: "5 mixed questions on comparison and equivalence", layout: "Assessment", src: "spine" },
+      { n: 20, text: "Fractions on a Number Line", notes: "Place fractions on 0-1 number line", layout: "Content", src: "spine" },
+      { n: 21, text: "Number Line Challenge", notes: "Drag fractions to correct position", layout: "Activity", src: "spine" },
+      { n: 22, text: "Unit Fractions — Building Blocks", notes: "Explain unit fractions as building blocks", layout: "Content", src: "spine" },
+      { n: 23, text: "Build a Fraction — Using Unit Fractions", notes: "Additive composition with fraction pieces", layout: "Content", src: "spine" },
+      { n: 24, text: "Real World Problem — Sharing Equally", notes: "Word problem set in Indonesian school context", layout: "Content", src: "spine" },
+      { n: 25, text: "Practice Set — Mixed Problems", notes: "6 problems of increasing difficulty", layout: "Activity", src: "spine" },
+      { n: 26, text: "Challenge Round — Fraction Puzzles", notes: "Extension for fast finishers", layout: "Content", src: "spine" },
+      { n: 27, text: "Checkpoint 3 — Final Assessment", notes: "8 questions covering all topics", layout: "Assessment", src: "spine" },
+      { n: 28, text: "What We Learned — Summary", notes: "Recap key concepts with visual summary", layout: "Content", src: "spine" },
+      { n: 29, text: "Great Job! — Achievement Badge", notes: "Celebration screen with badge earned", layout: "Content", src: "spine" },
+      { n: 30, text: "What's Next? — Preview of Adding Fractions", notes: "Teaser for next module", layout: "Assessment", src: "spine" },
     ];
 
     for (const s of slideData) {
@@ -118,6 +129,8 @@ export const seedAll = mutation({
         moduleId,
         version: 1,
         slideNumber: s.n,
+        sourceSlideNumber: s.src === "A1" ? s.n - 10 : s.n,
+        sourceFile: s.src,
         slideType: s.layout.toLowerCase(),
         textContent: s.text,
         speakerNotes: s.notes,
@@ -128,25 +141,40 @@ export const seedAll = mutation({
       });
     }
 
-    // 4. Gatekeeper results (passed — 9 rules)
+    // 4. Gatekeeper results — module gates (5 rules)
     await ctx.db.insert("gatekeeperResults", {
       moduleId,
       version: 1,
+      component: "module",
       passed: true,
       ruleResults: [
-        { ruleId: "G1", ruleName: "LO Present in Speaker Notes", passed: true, evidence: "Found in slide 2 speaker notes" },
-        { ruleId: "G2", ruleName: "Minimum 15 Slides", passed: true, evidence: "30 slides found" },
-        { ruleId: "G3", ruleName: "Title Slide Present", passed: true, evidence: "Slide 1 is a title slide" },
-        { ruleId: "G4", ruleName: "At Least 3 Interactive Activities", passed: true, evidence: "8 activity slides found" },
-        { ruleId: "G5", ruleName: "At Least 1 Assessment Checkpoint", passed: true, evidence: "3 assessment slides found" },
-        { ruleId: "G6", ruleName: "No Blank Slides", passed: true, evidence: "All slides have content" },
-        { ruleId: "G7", ruleName: "Summary Slide Present", passed: true, evidence: "Slide 28 is summary" },
-        { ruleId: "G8", ruleName: "Speaker Notes on All Slides", passed: true, evidence: "All slides have speaker notes" },
-        { ruleId: "G9", ruleName: "Consistent Slide Structure", passed: true, evidence: "All slides follow expected layout patterns" },
+        { ruleId: "G1", ruleName: "LO-Content Alignment", passed: true, evidence: "LO clear and testable, all slides map to it" },
+        { ruleId: "G2", ruleName: "Structural Completeness", passed: true, evidence: "All slides have defined roles" },
+        { ruleId: "G3", ruleName: "Teacher Self-Sufficiency", passed: true, evidence: "On-screen content sufficient for non-expert teacher" },
+        { ruleId: "G4", ruleName: "No Prerequisite Gaps", passed: true, evidence: "All prerequisites covered or stated" },
+        { ruleId: "G5", ruleName: "Time Feasibility", passed: true, evidence: "Estimated 28 min, within Grade 3-5 window (25-30 min)" },
       ],
       agentName: "gatekeeper",
       completedAt: "2026-03-15T09:06:00Z",
-      dedupKey: "gate-seed-001",
+      dedupKey: "gate-seed-module-001",
+    });
+
+    // 4b. Gatekeeper results — applet_1 gates (5 rules)
+    await ctx.db.insert("gatekeeperResults", {
+      moduleId,
+      version: 1,
+      component: "applet_1",
+      passed: true,
+      ruleResults: [
+        { ruleId: "G1", ruleName: "Clear LO", passed: true, evidence: "Applet LO connects to parent module LO" },
+        { ruleId: "G2", ruleName: "Interactivity Exists", passed: true, evidence: "Drag-drop and comparison interactions defined" },
+        { ruleId: "G3", ruleName: "Build-Spec Completeness", passed: true, evidence: "Each screen specifies interactions, feedback, and success conditions" },
+        { ruleId: "G4", ruleName: "Storyboard Format Compliance", passed: false, evidence: "Screen 3 missing dev notes zone" },
+        { ruleId: "G5", ruleName: "State Flow Defined", passed: true, evidence: "Initial state, transitions, and completion condition present" },
+      ],
+      agentName: "gatekeeper",
+      completedAt: "2026-03-15T09:06:10Z",
+      dedupKey: "gate-seed-applet1-001",
     });
 
     // 5. Flow map
