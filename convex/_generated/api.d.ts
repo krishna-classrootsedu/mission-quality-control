@@ -23,6 +23,7 @@ import type * as parser from "../parser.js";
 import type * as recommendations from "../recommendations.js";
 import type * as reviewScores from "../reviewScores.js";
 import type * as seed from "../seed.js";
+import type * as tokenUsage from "../tokenUsage.js";
 
 import type {
   ApiFromModules,
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   recommendations: typeof recommendations;
   reviewScores: typeof reviewScores;
   seed: typeof seed;
+  tokenUsage: typeof tokenUsage;
 }>;
 
 /**

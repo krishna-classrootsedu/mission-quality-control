@@ -192,6 +192,24 @@ export default defineSchema({
     .index("by_moduleId_version", ["moduleId", "version"])
     .index("by_dedupKey", ["dedupKey"]),
 
+  // Token usage tracking — one row per agent per module per pipeline run
+  tokenUsage: defineTable({
+    agentName: v.string(),
+    moduleId: v.string(),
+    version: v.optional(v.number()),
+    totalTokens: v.number(),
+    contextTokens: v.optional(v.number()),
+    model: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    sessionKey: v.optional(v.string()),
+    timestamp: v.string(),
+    dedupKey: v.string(),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_agentName", ["agentName"])
+    .index("by_moduleId", ["moduleId"])
+    .index("by_dedupKey", ["dedupKey"]),
+
   // Pipeline event log
   agentActivity: defineTable({
     agentName: v.string(),

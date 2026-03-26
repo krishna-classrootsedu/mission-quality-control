@@ -126,6 +126,27 @@ http.route({
 });
 
 http.route({
+  path: "/push/token-usage",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const body = await request.json();
+      // Support both single record and batch
+      if (body.records) {
+        const result = await ctx.runMutation(internal.tokenUsage.pushBatch, body);
+        return jsonResponse({ success: true, ...result });
+      } else {
+        const result = await ctx.runMutation(internal.tokenUsage.push, body);
+        return jsonResponse({ success: true, ...result });
+      }
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
+http.route({
   path: "/push/activity",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
@@ -402,7 +423,7 @@ http.route({
 
 const allPaths = [
   "/push/module", "/push/intake", "/push/gatekeeper", "/push/review-scores",
-  "/push/recommendations", "/push/flow-map", "/push/activity",
+  "/push/recommendations", "/push/flow-map", "/push/token-usage", "/push/activity",
   "/upload/generate-url",
   "/update/module-status", "/update/recommendation-review",
   "/update/complete-recommendation-review", "/update/flow-map-flag",
