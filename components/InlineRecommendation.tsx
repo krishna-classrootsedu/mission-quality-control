@@ -21,6 +21,8 @@ type Recommendation = {
   priority?: number;
   reviewStatus: string;
   vinayComment?: string;
+  source?: string;
+  agentName?: string;
 };
 
 type Decision = { status: string; comment: string };
@@ -44,6 +46,7 @@ export default function InlineRecommendation({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  const isCustom = r.source === "reviewer";
   const opKey = r.operationType.toUpperCase() as keyof typeof OPERATION_TYPES;
   const opConfig = OPERATION_TYPES[opKey] ?? { label: r.operationType, color: "gray" };
   const confKey = r.confidence.toLowerCase() as keyof typeof CONFIDENCE_LEVELS;
@@ -64,7 +67,7 @@ export default function InlineRecommendation({
 
   return (
     <div
-      className={`border border-stone-200 rounded-lg border-l-2 ${OP_BORDER_COLORS[r.operationType.toUpperCase()] ?? "border-l-stone-300"} ${cardBg} transition-colors`}
+      className={`border border-stone-200 rounded-lg border-l-2 ${isCustom ? "border-l-stone-600" : OP_BORDER_COLORS[r.operationType.toUpperCase()] ?? "border-l-stone-300"} ${cardBg} transition-colors`}
     >
       {/* Header row */}
       <div
@@ -73,14 +76,22 @@ export default function InlineRecommendation({
       >
         <div className="flex items-start gap-2">
           {/* Metadata line */}
-          <span className="text-[11px] font-mono text-stone-400 shrink-0 mt-px">
-            [{r.quadrantId}] {opConfig.label}
-            {r.pointsRecoverable != null && ` +${r.pointsRecoverable}pt`}
-          </span>
-          {/* Confidence */}
-          <span className="text-[11px] font-medium text-stone-400 shrink-0 mt-px">
-            {confConfig.label.charAt(0)}
-          </span>
+          {isCustom ? (
+            <span className="text-[11px] font-medium text-stone-500 shrink-0 mt-px flex items-center gap-1.5">
+              <span className="w-1 h-1 rounded-full bg-stone-500" />
+              Custom &middot; {r.sourceAttribution ?? r.agentName}
+            </span>
+          ) : (
+            <>
+              <span className="text-[11px] font-mono text-stone-400 shrink-0 mt-px">
+                [{r.quadrantId}] {opConfig.label}
+                {r.pointsRecoverable != null && ` +${r.pointsRecoverable}pt`}
+              </span>
+              <span className="text-[11px] font-medium text-stone-400 shrink-0 mt-px">
+                {confConfig.label.charAt(0)}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Issue text */}

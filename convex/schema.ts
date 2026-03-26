@@ -166,6 +166,7 @@ export default defineSchema({
     vinayComment: v.optional(v.string()),
     reviewedAt: v.optional(v.string()),
     agentName: v.string(),
+    source: v.optional(v.string()),       // "agent" (default/omitted) | "reviewer"
     createdAt: v.string(),
   })
     .index("by_moduleId_version", ["moduleId", "version"])

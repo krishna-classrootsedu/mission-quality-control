@@ -26,6 +26,7 @@ type Recommendation = {
   priority?: number;
   reviewStatus: string;
   vinayComment?: string;
+  source?: string;
 };
 
 type Decision = { status: string; comment: string };
