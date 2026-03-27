@@ -2,5 +2,32 @@
   command = "npm run build"
   publish = ".next"
 
+[context.production]
+  command = "npx convex deploy --cmd 'npm run build'"
+
+[context.deploy-preview]
+  command = "npm run build"
+
+[context.branch-deploy]
+  command = "npm run build"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Prevent Netlify Durable Cache from persisting HTML page responses across deploys.
+# The Durable Cache (separate from Edge CDN) does NOT auto-purge on new deploys —
+# it has a ~364-day default TTL set by @netlify/plugin-nextjs. Without this override,
+# a new deploy's CSS/JS chunk hashes differ from what's in old cached HTML → 404.
+# no-store ensures every HTML response is always fresh from the Netlify Function.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Netlify-CDN-Cache-Control = "no-store"
+
+# Static assets have content-addressed filenames (hash in filename).
+# They're safe to cache long-term — if content changes, filename hash changes.
+# Override the no-store rule above specifically for Next.js static chunks.
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Netlify-CDN-Cache-Control = "durable, max-age=31536000, immutable"
