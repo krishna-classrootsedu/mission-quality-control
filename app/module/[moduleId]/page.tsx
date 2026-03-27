@@ -22,8 +22,10 @@ export default function ModuleDetailPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
 
-  const moduleData = useQuery(api.modules.detail, { moduleId });
+  const allVersions = useQuery(api.modules.allVersions, { moduleId });
+  const moduleData = useQuery(api.modules.detail, selectedVersion != null ? { moduleId, version: selectedVersion } : { moduleId });
   const reviewScores = useQuery(
     api.reviewScores.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
@@ -175,8 +177,32 @@ export default function ModuleDetailPage() {
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <StageBadge status={moduleData.status} />
-                <span className="text-[11px] text-stone-400 font-mono">v{moduleData.version}</span>
-                <span className="text-[11px] text-stone-400">Grade {moduleData.grade}</span>
+                {allVersions && allVersions.length > 1 ? (
+                  <select
+                    value={moduleData.version}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      setSelectedVersion(v);
+                      setDecisions(new Map());
+                    }}
+                    className="text-[11px] text-stone-400 font-mono bg-transparent border border-stone-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-stone-300"
+                  >
+                    {allVersions.map((av) => (
+                      <option key={av.version} value={av.version}>v{av.version}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-[11px] text-stone-400 font-mono">v{moduleData.version}</span>
+                )}
+                <span className="text-[11px] text-stone-400">G{moduleData.grade}</span>
+                {moduleData.chapterNumber != null && (
+                  <span className="text-[11px] text-stone-400">
+                    Ch{moduleData.chapterNumber}{moduleData.chapterName ? ` — ${moduleData.chapterName}` : ""}
+                  </span>
+                )}
+                {moduleData.moduleNumber != null && (
+                  <span className="text-[11px] text-stone-400">M{moduleData.moduleNumber}</span>
+                )}
               </div>
             </div>
             {moduleData.overallPercentage != null && (

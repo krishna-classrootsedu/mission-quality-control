@@ -17,6 +17,8 @@ const VALID_STATUSES = [
   "vinay_reviewed",
   "creator_fixing",
   "ship_ready",
+  "corrections_intake_complete",
+  "corrections_review_complete",
 ] as const;
 
 // Upsert a module — new submission or re-submission
@@ -25,7 +27,12 @@ export const upsert = internalMutation({
     moduleId: v.string(),
     title: v.string(),
     learningObjective: v.string(),
-    grade: v.string(),
+    grade: v.number(),
+    chapterNumber: v.optional(v.number()),
+    chapterName: v.optional(v.string()),
+    moduleNumber: v.optional(v.number()),
+    cp: v.optional(v.string()),
+    tp: v.optional(v.string()),
     phase: v.optional(v.string()),
     topic: v.optional(v.string()),
     pptxFileUrl: v.optional(v.string()),
@@ -159,10 +166,20 @@ export const list = query({
   },
 });
 
-// Detail for a single module (latest version, excluding deleted)
+// Detail for a single module (latest version or specific version, excluding deleted)
 export const detail = query({
-  args: { moduleId: v.string() },
-  handler: async (ctx, { moduleId }) => {
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    if (version !== undefined) {
+      // Fetch specific version
+      const all = await ctx.db
+        .query("modules")
+        .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+        .collect();
+      const match = all.find((m) => m.version === version && !m.deleted);
+      return match ?? null;
+    }
+    // Latest version
     const module = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -186,7 +203,12 @@ export const submitModule = mutation({
   args: {
     title: v.string(),
     learningObjective: v.string(),
-    grade: v.string(),
+    grade: v.number(),
+    chapterNumber: v.optional(v.number()),
+    chapterName: v.optional(v.string()),
+    moduleNumber: v.optional(v.number()),
+    cp: v.optional(v.string()),
+    tp: v.optional(v.string()),
     phase: v.optional(v.string()),
     topic: v.optional(v.string()),
     submittedBy: v.string(),
@@ -248,7 +270,12 @@ export const submitModuleWithFlow = mutation({
   args: {
     title: v.string(),
     learningObjective: v.string(),
-    grade: v.string(),
+    grade: v.number(),
+    chapterNumber: v.optional(v.number()),
+    chapterName: v.optional(v.string()),
+    moduleNumber: v.optional(v.number()),
+    cp: v.optional(v.string()),
+    tp: v.optional(v.string()),
     phase: v.optional(v.string()),
     topic: v.optional(v.string()),
     submittedBy: v.string(),
@@ -295,6 +322,11 @@ export const submitModuleWithFlow = mutation({
       title: args.title,
       learningObjective: args.learningObjective,
       grade: args.grade,
+      chapterNumber: args.chapterNumber,
+      chapterName: args.chapterName,
+      moduleNumber: args.moduleNumber,
+      cp: args.cp,
+      tp: args.tp,
       phase: args.phase,
       topic: args.topic,
       slideCount: totalSlides,
@@ -428,6 +460,161 @@ export const finalizeReview = internalMutation({
     });
 
     return { action: "finalized", overallScore, overallPercentage, scoreBand };
+  },
+});
+
+// Modules eligible for corrections submission (vinay_reviewed or creator_fixing)
+export const correctableModules = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("modules").order("desc").take(200);
+    return all
+      .filter((m) => !m.deleted && ["vinay_reviewed", "creator_fixing"].includes(m.status))
+      .map((m) => ({
+        _id: m._id,
+        moduleId: m.moduleId,
+        title: m.title,
+        version: m.version,
+        grade: m.grade,
+        chapterNumber: m.chapterNumber ?? null,
+        chapterName: m.chapterName ?? null,
+        moduleNumber: m.moduleNumber ?? null,
+        status: m.status,
+        overallScore: m.overallScore ?? null,
+        scoreBand: m.scoreBand ?? null,
+        updatedAt: m.updatedAt,
+      }));
+  },
+});
+
+// All versions of a module (for version selector in module detail)
+export const allVersions = query({
+  args: { moduleId: v.string() },
+  handler: async (ctx, { moduleId }) => {
+    const versions = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .order("desc")
+      .collect();
+    return versions
+      .filter((m) => !m.deleted)
+      .map((m) => ({ _id: m._id, version: m.version, status: m.status, updatedAt: m.updatedAt }));
+  },
+});
+
+// Submit corrections — creates new version of an existing reviewed module
+export const submitCorrections = mutation({
+  args: {
+    moduleId: v.string(),
+    sourceFiles: v.array(v.object({
+      filename: v.string(),
+      type: v.string(),
+      label: v.string(),
+      afterSpineSlide: v.optional(v.number()),
+      slideCount: v.number(),
+      storageId: v.optional(v.id("_storage")),
+    })),
+    slides: v.array(v.object({
+      slideNumber: v.number(),
+      sourceFile: v.string(),
+      sourceSlideNumber: v.number(),
+      textContent: v.optional(v.string()),
+      speakerNotes: v.optional(v.string()),
+      layoutType: v.optional(v.string()),
+      hasAnimation: v.optional(v.boolean()),
+      animationSequence: v.optional(v.any()),
+      morphPairWith: v.optional(v.number()),
+      metadata: v.optional(v.any()),
+      thumbnailStorageId: v.optional(v.id("_storage")),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const now = new Date().toISOString();
+
+    // Find existing module (latest version)
+    const existing = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
+      .order("desc")
+      .first();
+
+    if (!existing) throw new Error(`Module not found: ${args.moduleId}`);
+    if (existing.deleted) throw new Error("Module has been deleted");
+    if (!["vinay_reviewed", "creator_fixing"].includes(existing.status)) {
+      throw new Error(`Module must be in vinay_reviewed or creator_fixing status, got: ${existing.status}`);
+    }
+
+    const newVersion = existing.version + 1;
+    const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
+    const totalSlides = args.slides.length;
+
+    // Create new version — copy metadata from existing, new files + corrections status
+    const moduleDocId = await ctx.db.insert("modules", {
+      moduleId: args.moduleId,
+      title: existing.title,
+      learningObjective: existing.learningObjective,
+      grade: existing.grade,
+      chapterNumber: existing.chapterNumber,
+      chapterName: existing.chapterName,
+      moduleNumber: existing.moduleNumber,
+      cp: existing.cp,
+      tp: existing.tp,
+      phase: existing.phase,
+      topic: existing.topic,
+      slideCount: totalSlides,
+      sourceFiles: args.sourceFiles,
+      status: "corrections_intake_complete",
+      version: newVersion,
+      totalApplets,
+      completedAppletReviews: 0,
+      spineComplete: false,
+      submittedBy: existing.submittedBy,
+      submittedAt: now,
+      updatedAt: now,
+    });
+
+    // Batch-insert parsed slides
+    for (const slide of args.slides) {
+      await ctx.db.insert("parsedSlides", {
+        moduleId: args.moduleId,
+        version: newVersion,
+        slideNumber: slide.slideNumber,
+        sourceFile: slide.sourceFile,
+        sourceSlideNumber: slide.sourceSlideNumber,
+        textContent: slide.textContent,
+        speakerNotes: slide.speakerNotes,
+        layoutType: slide.layoutType,
+        hasAnimation: slide.hasAnimation,
+        animationSequence: slide.animationSequence,
+        morphPairWith: slide.morphPairWith,
+        metadata: slide.metadata,
+        thumbnailStorageId: slide.thumbnailStorageId,
+        agentName: "upload-ui",
+        createdAt: now,
+      });
+    }
+
+    // Create intake results record
+    await ctx.db.insert("intakeResults", {
+      moduleId: args.moduleId,
+      version: newVersion,
+      slideCount: totalSlides,
+      slideTypes: {},
+      flags: [],
+      agentName: "upload-ui",
+      completedAt: now,
+      dedupKey: `intake-${args.moduleId}-v${newVersion}`,
+    });
+
+    await logActivityIfNew(ctx, {
+      agentName: "system",
+      action: "module_corrections_submitted",
+      message: `Corrections submitted for "${existing.title}" — v${existing.version} → v${newVersion}`,
+      dedupKey: `module-corrections-${args.moduleId}-v${newVersion}`,
+      metadata: { moduleId: args.moduleId, previousVersion: existing.version, version: newVersion },
+    });
+
+    return { id: moduleDocId, moduleId: args.moduleId, version: newVersion, slideCount: totalSlides };
   },
 });
 

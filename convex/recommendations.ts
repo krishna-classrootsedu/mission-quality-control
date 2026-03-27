@@ -1,4 +1,4 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 
@@ -206,6 +206,21 @@ export const addCustomReview = mutation({
       source: "reviewer",
       createdAt: now,
     });
+  },
+});
+
+// Accepted feedback from a specific version — used by Orchestrator for corrections flow
+export const acceptedByModuleVersion = internalQuery({
+  args: { moduleId: v.string(), version: v.number() },
+  handler: async (ctx, { moduleId, version }) => {
+    const all = await ctx.db
+      .query("recommendations")
+      .withIndex("by_moduleId_version", (q) =>
+        q.eq("moduleId", moduleId).eq("version", version)
+      )
+      .collect();
+    // Include accepted agent recs + all custom reviews (source === "reviewer")
+    return all.filter((r) => r.reviewStatus === "accepted" || r.source === "reviewer");
   },
 });
 

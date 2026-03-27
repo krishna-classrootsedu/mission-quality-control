@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useAction } from "convex/react";
+import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -11,7 +11,7 @@ import {
   SourceSlide,
 } from "@/lib/moduleFlow";
 
-const GRADES = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const TOPICS = [
   "Fractions", "Decimals", "Geometry", "Measurement",
   "Data Handling", "Whole Numbers", "Algebra", "Other",
@@ -30,19 +30,48 @@ type AppletEntry = {
   parsed: ParsedFile | null;
 };
 
+function isAppletFile(name: string): boolean {
+  return /^G\d+C\d+M\d+A\d+/i.test(name) || /[\s_-]A\d+[\s_.-]/i.test(name);
+}
+
+type CorrectableModule = {
+  _id: string;
+  moduleId: string;
+  title: string;
+  version: number;
+  grade: number;
+  chapterNumber: number | null;
+  chapterName: string | null;
+  moduleNumber: number | null;
+  status: string;
+  overallScore: number | null;
+  scoreBand: string | null;
+  updatedAt: string;
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const spineFileRef = useRef<HTMLInputElement>(null);
 
   const submitWithFlow = useMutation(api.modules.submitModuleWithFlow);
+  const submitCorrections = useMutation(api.modules.submitCorrections);
   const generateUploadUrl = useMutation(api.modules.generateUploadUrl);
   const parsePptx = useAction(api.parser.parsePptx);
+
+  // Mode: new module or corrections submission
+  const [mode, setMode] = useState<"new" | "corrections">("new");
+  const [selectedModule, setSelectedModule] = useState<CorrectableModule | null>(null);
+  const [corrGrade, setCorrGrade] = useState<number | "">("");
+  const [corrChapter, setCorrChapter] = useState<number | "">("");
+  const correctableModules = useQuery(api.modules.correctableModules);
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
   const [learningObjective, setLearningObjective] = useState("");
-  const [grade, setGrade] = useState("4");
-  const [phase, setPhase] = useState("");
+  const [grade, setGrade] = useState<number>(4);
+  const [chapterNumber, setChapterNumber] = useState<number | "">("");
+  const [chapterName, setChapterName] = useState("");
+  const [moduleNumber, setModuleNumber] = useState<number | "">("");
   const [topic, setTopic] = useState("");
   const [submittedBy, setSubmittedBy] = useState("");
   const [spineParsed, setSpineParsed] = useState<ParsedFile | null>(null);
@@ -50,8 +79,13 @@ export default function UploadPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitProgress, setSubmitProgress] = useState("");
   const [error, setError] = useState("");
+  const [autoDetected, setAutoDetected] = useState(false);
+
+  const isCorrections = mode === "corrections";
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
+  const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
+  const spineSelected = !!spineParsed; // file chosen, may still be parsing
 
   async function parseFile(file: File): Promise<SourceSlide[]> {
     const uploadUrl = await generateUploadUrl();
@@ -62,7 +96,6 @@ export default function UploadPage() {
     });
     if (!uploadResult.ok) throw new Error("Failed to upload file for parsing");
     const { storageId } = await uploadResult.json();
-
     const parsed = await parsePptx({ storageId });
     const rawSlides: Array<Record<string, unknown>> = Array.isArray(parsed)
       ? parsed
@@ -70,8 +103,7 @@ export default function UploadPage() {
     return rawSlides.map(
       (s: Record<string, unknown>, idx: number): SourceSlide => ({
         sourceFile: "",
-        sourceSlideNumber:
-          (s.slide_number as number) ?? (s.sourceSlideNumber as number) ?? idx + 1,
+        sourceSlideNumber: (s.slide_number as number) ?? (s.sourceSlideNumber as number) ?? idx + 1,
         textContent: (s.text_content as string) ?? (s.textContent as string),
         speakerNotes: (s.speaker_notes as string) ?? (s.speakerNotes as string),
         layoutType: (s.layout_type as string) ?? (s.layoutType as string),
@@ -88,7 +120,22 @@ export default function UploadPage() {
     const f = e.target.files?.[0];
     if (!f) return;
     if (!f.name.endsWith(".pptx")) { setError("Only .pptx files are accepted"); return; }
+    // Reject applet storyboards — spine deck only
+    if (isAppletFile(f.name)) {
+      setError("This looks like an applet storyboard (has A1/A2/A3 in the name). Please upload the spine deck here. Applet storyboards are uploaded in the next step.");
+      return;
+    }
     setError("");
+    // Smart-fill from filename
+    const match = f.name.match(/^G(\d+)C(\d+)M(\d+)/i);
+    if (match) {
+      setGrade(parseInt(match[1]));
+      setChapterNumber(parseInt(match[2]));
+      setModuleNumber(parseInt(match[3]));
+      setAutoDetected(true);
+    } else {
+      setAutoDetected(false);
+    }
     if (!title) setTitle(f.name.replace(/\.pptx$/i, "").replace(/[-_]/g, " "));
     setSpineParsed({ file: f, slides: [], parsing: true, error: "" });
     try {
@@ -99,6 +146,7 @@ export default function UploadPage() {
     }
   }
 
+  // --- Applet handlers ---
   function addApplet() {
     setApplets((prev) => [...prev, { label: `A${prev.length + 1}`, afterSpineSlide: 1, parsed: null }]);
   }
@@ -125,12 +173,21 @@ export default function UploadPage() {
     }
   }
 
-  function canProceedStep1() { return title.trim().length > 0 && learningObjective.trim().length > 0 && submittedBy.trim().length > 0; }
   const anyAppletParsing = applets.some((a) => a.parsed?.parsing);
   const lastAppletReady = applets.length === 0 || (applets[applets.length - 1].parsed && !applets[applets.length - 1].parsed!.parsing && applets[applets.length - 1].parsed!.slides.length > 0);
   const canAddApplet = spineSlideCount > 0 && !spineParsed?.parsing && lastAppletReady && !anyAppletParsing;
-  function canProceedStep2() {
-    return !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error && !anyAppletParsing;
+
+  function canProceedStep1() {
+    if (isCorrections) {
+      return spineReady && !!selectedModule;
+    }
+    return spineReady &&
+      title.trim().length > 0 &&
+      learningObjective.trim().length > 0 &&
+      submittedBy.trim().length > 0 &&
+      chapterNumber !== "" &&
+      chapterName.trim().length > 0 &&
+      moduleNumber !== "";
   }
 
   function buildSequencedSlides() {
@@ -144,7 +201,7 @@ export default function UploadPage() {
     if (!spineParsed) return;
     setError(""); setSubmitting(true);
     try {
-      setSubmitProgress("Uploading spine PPTX...");
+      setSubmitProgress("Uploading spine deck...");
       const uploadUrl = await generateUploadUrl();
       const uploadResult = await fetch(uploadUrl, {
         method: "POST",
@@ -170,287 +227,486 @@ export default function UploadPage() {
         thumbnailStorageId: s.thumbnailStorageId as Id<"_storage"> | undefined,
       }));
 
-      setSubmitProgress("Creating module...");
-      const moduleResult = await submitWithFlow({
-        title: title.trim(), learningObjective: learningObjective.trim(), grade,
-        phase: phase.trim() || undefined, topic: topic || undefined,
-        submittedBy: submittedBy.trim(), sourceFiles, slides,
-      });
-      setSubmitProgress("Done! Redirecting...");
-      router.push(`/module/${moduleResult.moduleId}`);
+      if (isCorrections && selectedModule) {
+        setSubmitProgress("Submitting corrections...");
+        const result = await submitCorrections({
+          moduleId: selectedModule.moduleId, sourceFiles, slides,
+        });
+        setSubmitProgress("Done! Redirecting...");
+        router.push(`/module/${result.moduleId}`);
+      } else {
+        setSubmitProgress("Creating module...");
+        const moduleResult = await submitWithFlow({
+          title: title.trim(), learningObjective: learningObjective.trim(), grade,
+          chapterNumber: chapterNumber !== "" ? chapterNumber : undefined,
+          chapterName: chapterName.trim() || undefined,
+          moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
+          topic: topic || undefined,
+          submittedBy: submittedBy.trim(), sourceFiles, slides,
+        });
+        setSubmitProgress("Done! Redirecting...");
+        router.push(`/module/${moduleResult.moduleId}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed"); setSubmitProgress("");
     } finally { setSubmitting(false); }
   }
 
-  const stepLabels = ["Module Details", "Upload Files", "Review & Submit"];
+  const stepLabels = ["Upload Spine", "Applet Storyboards", "Review & Submit"];
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-6">
-      <h1 className="text-lg font-semibold text-stone-800 tracking-tight mb-1">Submit Module for Review</h1>
-      <p className="text-[11px] text-stone-400 mb-6 uppercase tracking-[0.08em] font-medium">Upload storyboard files to start the review pipeline</p>
+    <main className="max-w-2xl mx-auto px-6 py-5">
+      <h1 className="text-lg font-semibold text-stone-800 tracking-tight mb-0.5">Submit Module for Review</h1>
+      <p className="text-[11px] text-stone-400 mb-4 uppercase tracking-[0.08em] font-medium">
+        {isCorrections ? "Upload corrected files for an existing module" : "Upload your spine deck to start the review pipeline"}
+      </p>
 
-        {/* Step indicator — minimal progress bar */}
-        <div className="flex items-center gap-0 mb-6">
-          <div className="flex-1 h-1 bg-stone-200 rounded-full overflow-hidden flex">
-            {stepLabels.map((_, i) => {
-              const s = i + 1;
-              const isDone = s < step;
-              const isActive = s === step;
-              return (
-                <div
-                  key={s}
-                  className={`flex-1 h-full transition-colors ${
-                    isDone ? "bg-stone-800" : isActive ? "bg-stone-400" : "bg-stone-200"
-                  }`}
-                />
-              );
-            })}
-          </div>
-          <span className="ml-3 text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">
-            {stepLabels[step - 1]}
-          </span>
+      {/* Mode toggle */}
+      <div className="flex gap-1 mb-4">
+        <button
+          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+            mode === "new" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+          }`}
+        >
+          New Module
+        </button>
+        <button
+          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+            mode === "corrections" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+          }`}
+        >
+          Corrections
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="flex items-center gap-0 mb-5">
+        <div className="flex-1 h-1 bg-stone-200 rounded-full overflow-hidden flex">
+          {stepLabels.map((_, i) => {
+            const s = i + 1;
+            return (
+              <div key={s} className={`flex-1 h-full transition-colors ${s < step ? "bg-stone-800" : s === step ? "bg-stone-400" : "bg-stone-200"}`} />
+            );
+          })}
         </div>
+        <span className="ml-3 text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] whitespace-nowrap">{stepLabels[step - 1]}</span>
+      </div>
 
-        {/* Step 1: Module Details */}
-        {step === 1 && (
-          <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5 space-y-4">
-            <div>
-              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Module Title *</label>
-              <input
-                type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. G1C4M08 Introduction to Fractions"
-                className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Learning Objective *</label>
-              <textarea
-                value={learningObjective} onChange={(e) => setLearningObjective(e.target.value)}
-                placeholder="What should students be able to do after completing this module?"
-                rows={2}
-                className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 resize-none transition-shadow"
-              />
-            </div>
-
-            <div className="grid grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Grade *</label>
-                <select value={grade} onChange={(e) => setGrade(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
-                  {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
-                </select>
+      {/* ─── Step 1: Spine Deck + Module Details (one fold) ─── */}
+      {step === 1 && (
+        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle overflow-hidden">
+          {/* Corrections: Cascading module selector (Grade → Chapter → Module) */}
+          {isCorrections && (
+            <div className="p-4 pb-3">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Select Module</span>
+                <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Topic</label>
-                <select value={topic} onChange={(e) => setTopic(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
-                  <option value="">Select...</option>
-                  {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Phase</label>
-                <input type="text" value={phase} onChange={(e) => setPhase(e.target.value)}
-                  placeholder="e.g. Phase 1"
-                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-1">Your Name *</label>
-                <input type="text" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)}
-                  placeholder="e.g. Priya"
-                  className="w-full px-3 py-2.5 border border-stone-200 rounded-lg text-[13px] h-10 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow"
-                />
-              </div>
-            </div>
+              {correctableModules === undefined ? (
+                <div className="text-[11px] text-stone-400">Loading modules...</div>
+              ) : correctableModules.length === 0 ? (
+                <div className="text-[11px] text-stone-400 py-2">No modules available for corrections. Modules must be in &ldquo;Reviewed&rdquo; or &ldquo;Creator Fixing&rdquo; status.</div>
+              ) : (() => {
+                const mods = correctableModules as CorrectableModule[];
+                const uniqueGrades = Array.from(new Set(mods.map((m) => m.grade))).sort((a, b) => a - b);
+                const chaptersForGrade = corrGrade !== ""
+                  ? Array.from(new Map(mods.filter((m) => m.grade === corrGrade && m.chapterNumber != null).map((m) => [m.chapterNumber, m.chapterName])).entries()).sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0))
+                  : [];
+                const modulesForChapter = corrGrade !== "" && corrChapter !== ""
+                  ? mods.filter((m) => m.grade === corrGrade && m.chapterNumber === corrChapter).sort((a, b) => (a.moduleNumber ?? 0) - (b.moduleNumber ?? 0))
+                  : corrGrade !== ""
+                    ? mods.filter((m) => m.grade === corrGrade && m.chapterNumber == null)
+                    : [];
 
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
+                return (
+                  <div className="space-y-2.5">
+                    {/* Row: Grade + Chapter dropdowns */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Grade</label>
+                        <select
+                          value={corrGrade}
+                          onChange={(e) => { setCorrGrade(e.target.value === "" ? "" : Number(e.target.value)); setCorrChapter(""); setSelectedModule(null); }}
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                        >
+                          <option value="">Select grade...</option>
+                          {uniqueGrades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Chapter</label>
+                        <select
+                          value={corrChapter}
+                          onChange={(e) => { setCorrChapter(e.target.value === "" ? "" : Number(e.target.value)); setSelectedModule(null); }}
+                          disabled={corrGrade === "" || chaptersForGrade.length === 0}
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Select chapter...</option>
+                          {chaptersForGrade.map(([num, name]) => (
+                            <option key={num} value={num ?? ""}>Ch{num}{name ? ` — ${name}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-            <div className="flex justify-end pt-1">
-              <button type="button" disabled={!canProceedStep1()} onClick={() => { setError(""); setStep(2); }}
-                className="px-5 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                Next &rarr;
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Upload Files */}
-        {step === 2 && (
-          <div className="space-y-3">
-            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-              <label className="block text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">
-                Spine PPTX <span className="text-red-400">required</span>
-              </label>
-              <div
-                className={`border-2 border-dashed rounded-lg px-5 py-4 text-center cursor-pointer transition-all ${
-                  spineParsed && !spineParsed.error ? "border-stone-400 bg-stone-50"
-                    : spineParsed?.error ? "border-red-300 bg-red-50/50"
-                    : "border-stone-200 hover:border-stone-400 bg-stone-50/50"
-                }`}
-                onClick={() => spineFileRef.current?.click()}
-              >
-                <input ref={spineFileRef} type="file" accept=".pptx" onChange={handleSpineSelect} className="hidden" />
-                {spineParsed ? (
-                  <div>
-                    <div className={`text-[13px] font-medium ${spineParsed.error ? "text-red-700" : "text-stone-700"}`}>{spineParsed.file.name}</div>
-                    {spineParsed.parsing && (
-                      <div className="flex items-center justify-center gap-2 mt-1.5 text-[11px] text-stone-500">
-                        <svg className="animate-spin h-3.5 w-3.5 text-stone-400" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Parsing...
+                    {/* Module list (filtered) */}
+                    {modulesForChapter.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em]">Module</label>
+                        {modulesForChapter.map((m) => (
+                          <button
+                            key={m._id}
+                            onClick={() => setSelectedModule(m)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-all ${
+                              selectedModule?._id === m._id
+                                ? "border-stone-400 bg-stone-50 shadow-subtle"
+                                : "border-stone-200 hover:border-stone-300 hover:bg-stone-50/50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[13px] font-medium text-stone-700">
+                                {m.moduleNumber != null && <span className="text-stone-400 mr-1.5">M{m.moduleNumber}</span>}
+                                {m.title}
+                              </span>
+                              <span className="text-[11px] font-mono text-stone-400">v{m.version}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-400">
+                              {m.overallScore != null && <span>{m.overallScore}/100</span>}
+                              {m.scoreBand && <span className="text-stone-500">{m.scoreBand}</span>}
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     )}
-                    {!spineParsed.parsing && !spineParsed.error && (
-                      <div className="text-[11px] text-stone-500 mt-1.5">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
+
+                    {/* Selected module summary */}
+                    {selectedModule && (
+                      <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-3 py-2 text-[11px] text-stone-500">
+                        Corrections for <span className="font-semibold text-stone-600">{selectedModule.title}</span> — v{selectedModule.version} → v{selectedModule.version + 1}
+                      </div>
                     )}
-                    {spineParsed.error && <div className="text-[11px] text-red-600 mt-1.5">{spineParsed.error}</div>}
                   </div>
-                ) : (
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Zone 1: Spine Deck Upload (hidden until module selected in corrections mode) */}
+          <div className={`p-4 pb-3 ${isCorrections ? "border-t border-stone-100" : ""}`} style={isCorrections && !selectedModule ? { display: "none" } : undefined}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Spine Deck</span>
+              <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
+            </div>
+            <div
+              className={`border-2 border-dashed rounded-lg px-4 text-center cursor-pointer transition-all ${
+                spineParsed && !spineParsed.error
+                  ? "border-stone-300 bg-stone-50/80 py-3"
+                  : spineParsed?.error
+                  ? "border-red-300 bg-red-50/50 py-3"
+                  : "border-stone-200 hover:border-stone-400 bg-stone-50/30 py-5"
+              }`}
+              onClick={() => spineFileRef.current?.click()}
+            >
+              <input ref={spineFileRef} type="file" accept=".pptx" onChange={handleSpineSelect} className="hidden" />
+              {spineParsed ? (
+                <div>
+                  <div className={`text-[13px] font-medium ${spineParsed.error ? "text-red-700" : "text-stone-700"}`}>{spineParsed.file.name}</div>
+                  {spineParsed.parsing && (
+                    <div className="flex items-center justify-center gap-2 mt-1 text-[11px] text-stone-400">
+                      <svg className="animate-spin h-3 w-3 text-stone-400" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Parsing slides...
+                    </div>
+                  )}
+                  {spineReady && (
+                    <div className="text-[11px] text-stone-500 mt-1">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
+                  )}
+                  {spineParsed.error && <div className="text-[11px] text-red-600 mt-1">{spineParsed.error}</div>}
+                </div>
+              ) : (
+                <div>
+                  <svg className="w-6 h-6 text-stone-300 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  <div className="text-[13px] text-stone-500">Click to upload spine deck</div>
+                  <div className="text-[11px] text-stone-300 mt-0.5">.pptx format only &middot; applet storyboards go in the next step</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Zone 2: Module Details — appears immediately after file selection (new module only) */}
+          {spineSelected && !isCorrections && (
+            <>
+              <div className="border-t border-stone-100 mx-4" />
+              <div className="p-4 pt-3 space-y-3">
+                {/* Auto-fill badge */}
+                {autoDetected && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-[0.06em]">Auto-filled from filename</span>
+                  </div>
+                )}
+
+                {/* Row 1: Grade · Chapter # · Module # */}
+                <div className="grid grid-cols-3 gap-2.5">
                   <div>
-                    <div className="text-[13px] text-stone-500">Click to select the spine .pptx file</div>
-                    <div className="text-[11px] text-stone-300 mt-0.5">Main storyboard file</div>
+                    <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Grade *</label>
+                    <select value={grade} onChange={(e) => setGrade(Number(e.target.value))}
+                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
+                      {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+                    </select>
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Chapter # *</label>
+                    <input type="number" min={1} value={chapterNumber}
+                      onChange={(e) => setChapterNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
+                      placeholder="2"
+                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Module # *</label>
+                    <input type="number" min={1} value={moduleNumber}
+                      onChange={(e) => setModuleNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
+                      placeholder="1"
+                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                  </div>
+                </div>
+
+                {/* Row 2: Chapter Name · Your Name */}
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Chapter Name *</label>
+                    <input type="text" value={chapterName} onChange={(e) => setChapterName(e.target.value)}
+                      placeholder="e.g. Fractions and Decimals"
+                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Your Name *</label>
+                    <input type="text" value={submittedBy} onChange={(e) => setSubmittedBy(e.target.value)}
+                      placeholder="e.g. Priya"
+                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                  </div>
+                </div>
+
+                {/* Row 3: Module Name */}
+                <div>
+                  <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Module Name *</label>
+                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Introduction to Fractions"
+                    className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                </div>
+
+                {/* Row 4: Learning Objective */}
+                <div>
+                  <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Learning Objective *</label>
+                  <textarea value={learningObjective} onChange={(e) => setLearningObjective(e.target.value)}
+                    placeholder="What should students be able to do after completing this module?"
+                    rows={2}
+                    className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 resize-none transition-shadow" />
+                </div>
+
+                {/* Row 5: Topic (optional) */}
+                <div className="max-w-[50%]">
+                  <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Topic</label>
+                  <select value={topic} onChange={(e) => setTopic(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
+                    <option value="">Select...</option>
+                    {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="mx-4 mb-3">
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[11px] text-red-700">{error}</div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="flex justify-end px-4 py-3 border-t border-stone-100">
+            <button type="button" disabled={!canProceedStep1()} onClick={() => { setError(""); setStep(2); }}
+              className="px-5 py-2 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+              Next &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Step 2: Applet Storyboards ─── */}
+      {step === 2 && (
+        <div className="space-y-3">
+          {/* Spine summary */}
+          <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="font-semibold text-stone-500">Spine:</span>
+              <span className="text-stone-600">{spineParsed?.file.name}</span>
+              <span className="text-stone-400">&middot; {spineSlideCount} slides</span>
+            </div>
+          </div>
+
+          {/* Applet upload area */}
+          <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Applet Storyboards</span>
+                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.06em]">optional</span>
+              </div>
+              <button type="button" onClick={addApplet} disabled={!canAddApplet}
+                className="text-[11px] font-medium text-stone-500 hover:text-stone-700 disabled:text-stone-300 disabled:cursor-not-allowed transition-colors">
+                + Add Storyboard
+              </button>
+            </div>
+            {applets.length === 0 && (
+              <p className="text-[11px] text-stone-400 py-2">No applet storyboards added. These are optional — they insert interactive slides into the spine flow. You can skip this step.</p>
+            )}
+            <div className="space-y-2">
+              {applets.map((applet, index) => (
+                <AppletRow key={applet.label + index} applet={applet} index={index} spineSlideCount={spineSlideCount}
+                  onFileSelect={handleAppletFileSelect} onPositionChange={updateAppletSlidePosition} onRemove={removeApplet} />
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
+
+          <div className="flex justify-between pt-1">
+            <button type="button" onClick={() => { setError(""); setStep(1); }}
+              className="px-5 py-2 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 transition-all">
+              &larr; Back
+            </button>
+            <button type="button" disabled={anyAppletParsing} onClick={() => { setError(""); setStep(3); }}
+              className="px-5 py-2 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+              {anyAppletParsing ? "Parsing..." : applets.length === 0 ? "Skip \u2192" : "Next \u2192"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Step 3: Review & Submit ─── */}
+      {step === 3 && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-5 gap-3">
+            <div className="col-span-2 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
+              <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">
+                {isCorrections ? "Corrections" : "Module"}
+              </h2>
+              <div className="space-y-2">
+                {isCorrections && selectedModule ? (
+                  <>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Module</div>
+                      <div className="text-[13px] font-medium text-stone-800">{selectedModule.title}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Version</div>
+                      <div className="text-[13px] text-stone-600">v{selectedModule.version} → v{selectedModule.version + 1}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
+                      <div className="text-[13px] text-stone-600">
+                        G{selectedModule.grade}
+                        {selectedModule.chapterNumber != null && ` · Ch${selectedModule.chapterNumber}`}
+                        {selectedModule.chapterName && ` — ${selectedModule.chapterName}`}
+                        {selectedModule.moduleNumber != null && ` · M${selectedModule.moduleNumber}`}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Name</div>
+                      <div className="text-[13px] font-medium text-stone-800">{title}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
+                      <div className="text-[13px] text-stone-600">G{grade} &middot; Ch{chapterNumber}{chapterName ? ` — ${chapterName}` : ""} &middot; M{moduleNumber}</div>
+                    </div>
+                    {topic && <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Topic</div>
+                      <div className="text-[13px] text-stone-600">{topic}</div>
+                    </div>}
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Submitted by</div>
+                      <div className="text-[13px] text-stone-600">{submittedBy}</div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-              <div className="flex items-center justify-between mb-2.5">
-                <label className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Applet Storyboards</label>
-                <button type="button" onClick={addApplet} disabled={!canAddApplet}
-                  className="text-[11px] font-medium text-stone-500 hover:text-stone-700 disabled:text-stone-300 disabled:cursor-not-allowed transition-colors">
-                  + Add Applet
-                </button>
-              </div>
-              {applets.length === 0 && (
-                <p className="text-[11px] text-stone-400">No applets added. Applets are optional — they insert interactive slides into the spine flow.</p>
-              )}
-              <div className="space-y-2">
-                {applets.map((applet, index) => (
-                  <AppletRow key={applet.label + index} applet={applet} index={index} spineSlideCount={spineSlideCount}
-                    onFileSelect={handleAppletFileSelect} onPositionChange={updateAppletSlidePosition} onRemove={removeApplet} />
-                ))}
-              </div>
-            </div>
-
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
-
-            <div className="flex justify-between pt-1">
-              <button type="button" onClick={() => { setError(""); setStep(1); }}
-                className="px-5 py-2.5 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 transition-all">
-                &larr; Back
-              </button>
-              <button type="button" disabled={!canProceedStep2()} onClick={() => { setError(""); setStep(3); }}
-                className="px-5 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-                {anyAppletParsing ? "Parsing applets..." : "Next \u2192"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Review & Submit */}
-        {step === 3 && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-5 gap-3">
-              <div className="col-span-2 bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-3">Module</h2>
-                <div className="space-y-2">
-                  <div>
-                    <div className="text-[11px] text-stone-400">Title</div>
-                    <div className="text-[13px] font-medium text-stone-800">{title}</div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div>
-                      <div className="text-[11px] text-stone-400">Grade</div>
-                      <div className="text-[13px] text-stone-600">Grade {grade}</div>
-                    </div>
-                    {topic && <div>
-                      <div className="text-[11px] text-stone-400">Topic</div>
-                      <div className="text-[13px] text-stone-600">{topic}</div>
-                    </div>}
-                    {phase && <div>
-                      <div className="text-[11px] text-stone-400">Phase</div>
-                      <div className="text-[13px] text-stone-600">{phase}</div>
-                    </div>}
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-stone-400">Submitted by</div>
-                    <div className="text-[13px] text-stone-600">{submittedBy}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-span-3 bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-3">Source Files</h2>
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="text-[11px] text-stone-400 border-b border-stone-100">
-                      <th className="text-left pb-2 font-medium">File</th>
-                      <th className="text-left pb-2 font-medium">Type</th>
-                      <th className="text-right pb-2 font-medium">Slides</th>
-                      <th className="text-right pb-2 font-medium">After</th>
+            <div className="col-span-3 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
+              <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">Source Files</h2>
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-[10px] text-stone-400 border-b border-stone-100 uppercase tracking-wide">
+                    <th className="text-left pb-1.5 font-medium">File</th>
+                    <th className="text-left pb-1.5 font-medium">Type</th>
+                    <th className="text-right pb-1.5 font-medium">Slides</th>
+                    <th className="text-right pb-1.5 font-medium">After</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {spineParsed && (
+                    <tr className="border-b border-stone-50">
+                      <td className="py-1.5 text-stone-600 text-[11px]">{spineParsed.file.name}</td>
+                      <td className="py-1.5 text-stone-500 text-[11px]">Spine</td>
+                      <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{spineParsed.slides.length}</td>
+                      <td className="py-1.5 text-right text-stone-300 text-[11px]">&mdash;</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {spineParsed && (
-                      <tr className="border-b border-stone-50">
-                        <td className="py-1.5 text-stone-600 text-[11px]">{spineParsed.file.name}</td>
-                        <td className="py-1.5 text-stone-500 text-[11px]">Spine</td>
-                        <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{spineParsed.slides.length}</td>
-                        <td className="py-1.5 text-right text-stone-300 text-[11px]">&mdash;</td>
-                      </tr>
-                    )}
-                    {applets.filter((a) => a.parsed && a.parsed.slides.length > 0).map((a) => (
-                      <tr key={a.label} className="border-b border-stone-50">
-                        <td className="py-1.5 text-stone-600 text-[11px]">{a.parsed!.file.name}</td>
-                        <td className="py-1.5 text-stone-500 text-[11px]">Applet ({a.label})</td>
-                        <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{a.parsed!.slides.length}</td>
-                        <td className="py-1.5 text-right text-stone-600 text-[11px]">Slide {a.afterSpineSlide}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-              <div className="flex items-center justify-between mb-2.5">
-                <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Module Flow</h2>
-                <span className="text-[11px] text-stone-400 font-mono">{buildSequencedSlides().length} slides total</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {buildFlowDescription().map((seg, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-[11px]">
-                    {i > 0 && <svg className="w-3 h-3 text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
-                    <span className="bg-stone-100 text-stone-600 px-2.5 py-1 rounded font-medium">{seg}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-4 py-3">
-              <p className="text-[11px] text-stone-500"><span className="font-semibold text-stone-600">LO:</span> {learningObjective}</p>
-            </div>
-
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
-
-            <div className="flex justify-between pt-1">
-              <button type="button" disabled={submitting} onClick={() => { setError(""); setStep(2); }}
-                className="px-5 py-2.5 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 disabled:opacity-40 transition-all">
-                &larr; Back
-              </button>
-              <button type="button" disabled={submitting} onClick={handleSubmit}
-                className="px-6 py-2.5 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-                {submitting ? submitProgress : "Submit for Review"}
-              </button>
+                  )}
+                  {applets.filter((a) => a.parsed && a.parsed.slides.length > 0).map((a) => (
+                    <tr key={a.label} className="border-b border-stone-50">
+                      <td className="py-1.5 text-stone-600 text-[11px]">{a.parsed!.file.name}</td>
+                      <td className="py-1.5 text-stone-500 text-[11px]">Storyboard ({a.label})</td>
+                      <td className="py-1.5 text-right text-stone-600 text-[11px] font-mono">{a.parsed!.slides.length}</td>
+                      <td className="py-1.5 text-right text-stone-600 text-[11px]">Slide {a.afterSpineSlide}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
+
+          <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em]">Module Flow</h2>
+              <span className="text-[11px] text-stone-400 font-mono">{buildSequencedSlides().length} slides total</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {buildFlowDescription().map((seg, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 text-[11px]">
+                  {i > 0 && <svg className="w-3 h-3 text-stone-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>}
+                  <span className="bg-stone-100 text-stone-600 px-2.5 py-1 rounded font-medium">{seg}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-4 py-2.5">
+            <p className="text-[11px] text-stone-500"><span className="font-semibold text-stone-600">LO:</span> {learningObjective}</p>
+          </div>
+
+          {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
+
+          <div className="flex justify-between pt-1">
+            <button type="button" disabled={submitting} onClick={() => { setError(""); setStep(2); }}
+              className="px-5 py-2 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 disabled:opacity-40 transition-all">
+              &larr; Back
+            </button>
+            <button type="button" disabled={submitting} onClick={handleSubmit}
+              className="px-6 py-2 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+              {submitting ? submitProgress : isCorrections ? "Submit Corrections" : "Submit for Review"}
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -481,7 +737,7 @@ function AppletRow({ applet, index, spineSlideCount, onFileSelect, onPositionCha
             {applet.parsed.error && <div className="text-[11px] text-red-500 mt-0.5">{applet.parsed.error}</div>}
           </div>
         ) : (
-          <button type="button" onClick={() => fileRef.current?.click()} className="text-[11px] text-stone-400 hover:text-stone-600">Select .pptx file</button>
+          <button type="button" onClick={() => fileRef.current?.click()} className="text-[11px] text-stone-400 hover:text-stone-600">Select .pptx storyboard</button>
         )}
       </div>
       <div className="shrink-0">

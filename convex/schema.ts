@@ -7,7 +7,12 @@ export default defineSchema({
     moduleId: v.string(),
     title: v.string(),
     learningObjective: v.string(),
-    grade: v.string(),
+    grade: v.number(),
+    chapterNumber: v.optional(v.number()),
+    chapterName: v.optional(v.string()),
+    moduleNumber: v.optional(v.number()),
+    cp: v.optional(v.string()),
+    tp: v.optional(v.string()),
     phase: v.optional(v.string()),
     topic: v.optional(v.string()),
     pptxFileUrl: v.optional(v.string()),
@@ -167,6 +172,7 @@ export default defineSchema({
     reviewedAt: v.optional(v.string()),
     agentName: v.string(),
     source: v.optional(v.string()),       // "agent" (default/omitted) | "reviewer"
+    fixStatus: v.optional(v.string()),   // "fixed" | "partially_fixed" | "not_fixed" (corrections flow only)
     createdAt: v.string(),
   })
     .index("by_moduleId_version", ["moduleId", "version"])

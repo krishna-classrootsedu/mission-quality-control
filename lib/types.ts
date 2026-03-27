@@ -13,6 +13,8 @@ export const PIPELINE_STATUSES = [
   "vinay_reviewed",
   "creator_fixing",
   "ship_ready",
+  "corrections_intake_complete",
+  "corrections_review_complete",
 ] as const;
 
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
@@ -77,7 +79,10 @@ export type ModuleBoardItem = {
   moduleId: string;
   title: string;
   learningObjective: string;
-  grade: string;
+  grade: number;
+  chapterNumber: number | null;
+  chapterName: string | null;
+  moduleNumber: number | null;
   status: string;
   version: number;
   column: BoardColumn;
@@ -142,4 +147,6 @@ export const STATUS_LABELS: Record<string, string> = {
   vinay_reviewed: "Reviewed",
   creator_fixing: "Creator Fixing",
   ship_ready: "Ship-ready",
+  corrections_intake_complete: "Corrections Uploaded",
+  corrections_review_complete: "Corrections Checked",
 };
