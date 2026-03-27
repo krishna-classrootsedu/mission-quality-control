@@ -68,7 +68,11 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
             )}
 
             <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
-              <span>Grade {module.grade}</span>
+              <span>
+                G{module.grade}
+                {module.chapterNumber != null && ` · Ch${module.chapterNumber}`}
+                {module.moduleNumber != null && ` · M${module.moduleNumber}`}
+              </span>
               {module.submittedBy && <span>{module.submittedBy}</span>}
             </div>
           </div>

@@ -77,7 +77,10 @@ export type ModuleBoardItem = {
   moduleId: string;
   title: string;
   learningObjective: string;
-  grade: string;
+  grade: number;
+  chapterNumber: number | null;
+  chapterName: string | null;
+  moduleNumber: number | null;
   status: string;
   version: number;
   column: BoardColumn;

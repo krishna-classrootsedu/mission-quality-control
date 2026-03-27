@@ -16,7 +16,10 @@ type ModuleBoardItem = {
   moduleId: string;
   title: string;
   learningObjective: string;
-  grade: string;
+  grade: number;
+  chapterNumber: number | null;
+  chapterName: string | null;
+  moduleNumber: number | null;
   status: string;
   version: number;
   column: BoardColumn;
@@ -100,6 +103,9 @@ export const getBoard = query({
       title: m.title,
       learningObjective: m.learningObjective,
       grade: m.grade,
+      chapterNumber: m.chapterNumber ?? null,
+      chapterName: m.chapterName ?? null,
+      moduleNumber: m.moduleNumber ?? null,
       status: m.status,
       version: m.version,
       column: statusToColumn(m.status),

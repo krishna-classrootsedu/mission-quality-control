@@ -35,7 +35,7 @@ export const seedAll = mutation({
       title: "G1C4M08 Introduction to Fractions",
       learningObjective:
         "Students will understand what fractions represent, identify fractions in everyday objects, and compare simple fractions with like denominators using visual models.",
-      grade: "4",
+      grade: 4,
       phase: "Phase 2",
       topic: "Fractions",
       slideCount: 30,

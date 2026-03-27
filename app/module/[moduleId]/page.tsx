@@ -176,7 +176,15 @@ export default function ModuleDetailPage() {
               <div className="flex items-center gap-2 mt-0.5">
                 <StageBadge status={moduleData.status} />
                 <span className="text-[11px] text-stone-400 font-mono">v{moduleData.version}</span>
-                <span className="text-[11px] text-stone-400">Grade {moduleData.grade}</span>
+                <span className="text-[11px] text-stone-400">G{moduleData.grade}</span>
+                {moduleData.chapterNumber != null && (
+                  <span className="text-[11px] text-stone-400">
+                    Ch{moduleData.chapterNumber}{moduleData.chapterName ? ` — ${moduleData.chapterName}` : ""}
+                  </span>
+                )}
+                {moduleData.moduleNumber != null && (
+                  <span className="text-[11px] text-stone-400">M{moduleData.moduleNumber}</span>
+                )}
               </div>
             </div>
             {moduleData.overallPercentage != null && (
