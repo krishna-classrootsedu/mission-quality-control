@@ -417,6 +417,33 @@ http.route({
   }),
 });
 
+// Accepted feedback from a specific version (for corrections flow — Orchestrator calls this)
+http.route({
+  path: "/query/accepted-feedback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const url = new URL(request.url);
+      const moduleId = url.searchParams.get("moduleId");
+      const versionParam = url.searchParams.get("version");
+      if (!moduleId || !versionParam) return jsonResponse({ error: "Missing moduleId or version" }, 400);
+      const version = parseInt(versionParam, 10);
+      const recs = await ctx.runQuery(internal.recommendations.acceptedByModuleVersion, { moduleId, version });
+      // Group by component for Orchestrator consumption
+      const grouped: Record<string, typeof recs> = {};
+      for (const r of recs) {
+        const key = r.component ?? "module";
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(r);
+      }
+      return jsonResponse({ moduleId, version, components: grouped, total: recs.length });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // CORS preflight for all routes
 // ---------------------------------------------------------------------------
@@ -430,7 +457,7 @@ const allPaths = [
   "/update/slide-thumbnail", "/update/finalize-review",
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
   "/query/review-scores", "/query/recommendations", "/query/flow-map",
-  "/query/pipeline-summary", "/query/activity",
+  "/query/pipeline-summary", "/query/activity", "/query/accepted-feedback",
 ];
 
 for (const path of allPaths) {

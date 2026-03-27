@@ -30,3 +30,5 @@ Netlify auto-deploys on push to `main`. Free plan — limited build credits, so 
 - **After ANY change to `convex/` files**, run `npx convex dev --once` (dev) and `npx convex deploy --yes` (prod).
 - **VPS agents talk to prod Convex** (`tame-ibex-528`). Local dev/testing uses dev (`trustworthy-platypus-466`). Never mix them up.
 - **Netlify env var:** `NEXT_PUBLIC_CONVEX_URL` points to prod (`https://tame-ibex-528.convex.cloud`).
+- **Do NOT remove the cache headers in `netlify.toml`.** The `Netlify-CDN-Cache-Control: no-store` on `/*` and `immutable` on `/_next/static/*` prevent ISE caused by Netlify's Durable Cache serving stale HTML with old chunk hashes after a new deploy. Without these headers, 10+ users see blank Internal Server Error pages. Same fix as thelaunchspace.
+- **Do NOT remove `generateBuildId` or `staleTimes` from `next.config.mjs`.** These work with the cache headers to prevent deployment skew.

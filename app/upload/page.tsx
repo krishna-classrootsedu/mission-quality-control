@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useAction } from "convex/react";
+import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -34,13 +34,36 @@ function isAppletFile(name: string): boolean {
   return /^G\d+C\d+M\d+A\d+/i.test(name) || /[\s_-]A\d+[\s_.-]/i.test(name);
 }
 
+type CorrectableModule = {
+  _id: string;
+  moduleId: string;
+  title: string;
+  version: number;
+  grade: number;
+  chapterNumber: number | null;
+  chapterName: string | null;
+  moduleNumber: number | null;
+  status: string;
+  overallScore: number | null;
+  scoreBand: string | null;
+  updatedAt: string;
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const spineFileRef = useRef<HTMLInputElement>(null);
 
   const submitWithFlow = useMutation(api.modules.submitModuleWithFlow);
+  const submitCorrections = useMutation(api.modules.submitCorrections);
   const generateUploadUrl = useMutation(api.modules.generateUploadUrl);
   const parsePptx = useAction(api.parser.parsePptx);
+
+  // Mode: new module or corrections submission
+  const [mode, setMode] = useState<"new" | "corrections">("new");
+  const [selectedModule, setSelectedModule] = useState<CorrectableModule | null>(null);
+  const [corrGrade, setCorrGrade] = useState<number | "">("");
+  const [corrChapter, setCorrChapter] = useState<number | "">("");
+  const correctableModules = useQuery(api.modules.correctableModules);
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
@@ -57,6 +80,8 @@ export default function UploadPage() {
   const [submitProgress, setSubmitProgress] = useState("");
   const [error, setError] = useState("");
   const [autoDetected, setAutoDetected] = useState(false);
+
+  const isCorrections = mode === "corrections";
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
@@ -153,6 +178,9 @@ export default function UploadPage() {
   const canAddApplet = spineSlideCount > 0 && !spineParsed?.parsing && lastAppletReady && !anyAppletParsing;
 
   function canProceedStep1() {
+    if (isCorrections) {
+      return spineReady && !!selectedModule;
+    }
     return spineReady &&
       title.trim().length > 0 &&
       learningObjective.trim().length > 0 &&
@@ -199,17 +227,26 @@ export default function UploadPage() {
         thumbnailStorageId: s.thumbnailStorageId as Id<"_storage"> | undefined,
       }));
 
-      setSubmitProgress("Creating module...");
-      const moduleResult = await submitWithFlow({
-        title: title.trim(), learningObjective: learningObjective.trim(), grade,
-        chapterNumber: chapterNumber !== "" ? chapterNumber : undefined,
-        chapterName: chapterName.trim() || undefined,
-        moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
-        topic: topic || undefined,
-        submittedBy: submittedBy.trim(), sourceFiles, slides,
-      });
-      setSubmitProgress("Done! Redirecting...");
-      router.push(`/module/${moduleResult.moduleId}`);
+      if (isCorrections && selectedModule) {
+        setSubmitProgress("Submitting corrections...");
+        const result = await submitCorrections({
+          moduleId: selectedModule.moduleId, sourceFiles, slides,
+        });
+        setSubmitProgress("Done! Redirecting...");
+        router.push(`/module/${result.moduleId}`);
+      } else {
+        setSubmitProgress("Creating module...");
+        const moduleResult = await submitWithFlow({
+          title: title.trim(), learningObjective: learningObjective.trim(), grade,
+          chapterNumber: chapterNumber !== "" ? chapterNumber : undefined,
+          chapterName: chapterName.trim() || undefined,
+          moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
+          topic: topic || undefined,
+          submittedBy: submittedBy.trim(), sourceFiles, slides,
+        });
+        setSubmitProgress("Done! Redirecting...");
+        router.push(`/module/${moduleResult.moduleId}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed"); setSubmitProgress("");
     } finally { setSubmitting(false); }
@@ -220,7 +257,29 @@ export default function UploadPage() {
   return (
     <main className="max-w-2xl mx-auto px-6 py-5">
       <h1 className="text-lg font-semibold text-stone-800 tracking-tight mb-0.5">Submit Module for Review</h1>
-      <p className="text-[11px] text-stone-400 mb-5 uppercase tracking-[0.08em] font-medium">Upload your spine deck to start the review pipeline</p>
+      <p className="text-[11px] text-stone-400 mb-4 uppercase tracking-[0.08em] font-medium">
+        {isCorrections ? "Upload corrected files for an existing module" : "Upload your spine deck to start the review pipeline"}
+      </p>
+
+      {/* Mode toggle */}
+      <div className="flex gap-1 mb-4">
+        <button
+          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+            mode === "new" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+          }`}
+        >
+          New Module
+        </button>
+        <button
+          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+            mode === "corrections" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+          }`}
+        >
+          Corrections
+        </button>
+      </div>
 
       {/* Progress bar */}
       <div className="flex items-center gap-0 mb-5">
@@ -238,8 +297,104 @@ export default function UploadPage() {
       {/* ─── Step 1: Spine Deck + Module Details (one fold) ─── */}
       {step === 1 && (
         <div className="bg-white rounded-lg border border-stone-200 shadow-subtle overflow-hidden">
-          {/* Zone 1: Spine Deck Upload */}
-          <div className="p-4 pb-3">
+          {/* Corrections: Cascading module selector (Grade → Chapter → Module) */}
+          {isCorrections && (
+            <div className="p-4 pb-3">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Select Module</span>
+                <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
+              </div>
+              {correctableModules === undefined ? (
+                <div className="text-[11px] text-stone-400">Loading modules...</div>
+              ) : correctableModules.length === 0 ? (
+                <div className="text-[11px] text-stone-400 py-2">No modules available for corrections. Modules must be in &ldquo;Reviewed&rdquo; or &ldquo;Creator Fixing&rdquo; status.</div>
+              ) : (() => {
+                const mods = correctableModules as CorrectableModule[];
+                const uniqueGrades = Array.from(new Set(mods.map((m) => m.grade))).sort((a, b) => a - b);
+                const chaptersForGrade = corrGrade !== ""
+                  ? Array.from(new Map(mods.filter((m) => m.grade === corrGrade && m.chapterNumber != null).map((m) => [m.chapterNumber, m.chapterName])).entries()).sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0))
+                  : [];
+                const modulesForChapter = corrGrade !== "" && corrChapter !== ""
+                  ? mods.filter((m) => m.grade === corrGrade && m.chapterNumber === corrChapter).sort((a, b) => (a.moduleNumber ?? 0) - (b.moduleNumber ?? 0))
+                  : corrGrade !== ""
+                    ? mods.filter((m) => m.grade === corrGrade && m.chapterNumber == null)
+                    : [];
+
+                return (
+                  <div className="space-y-2.5">
+                    {/* Row: Grade + Chapter dropdowns */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Grade</label>
+                        <select
+                          value={corrGrade}
+                          onChange={(e) => { setCorrGrade(e.target.value === "" ? "" : Number(e.target.value)); setCorrChapter(""); setSelectedModule(null); }}
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                        >
+                          <option value="">Select grade...</option>
+                          {uniqueGrades.map((g) => <option key={g} value={g}>Grade {g}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Chapter</label>
+                        <select
+                          value={corrChapter}
+                          onChange={(e) => { setCorrChapter(e.target.value === "" ? "" : Number(e.target.value)); setSelectedModule(null); }}
+                          disabled={corrGrade === "" || chaptersForGrade.length === 0}
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Select chapter...</option>
+                          {chaptersForGrade.map(([num, name]) => (
+                            <option key={num} value={num ?? ""}>Ch{num}{name ? ` — ${name}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Module list (filtered) */}
+                    {modulesForChapter.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em]">Module</label>
+                        {modulesForChapter.map((m) => (
+                          <button
+                            key={m._id}
+                            onClick={() => setSelectedModule(m)}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-all ${
+                              selectedModule?._id === m._id
+                                ? "border-stone-400 bg-stone-50 shadow-subtle"
+                                : "border-stone-200 hover:border-stone-300 hover:bg-stone-50/50"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[13px] font-medium text-stone-700">
+                                {m.moduleNumber != null && <span className="text-stone-400 mr-1.5">M{m.moduleNumber}</span>}
+                                {m.title}
+                              </span>
+                              <span className="text-[11px] font-mono text-stone-400">v{m.version}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-stone-400">
+                              {m.overallScore != null && <span>{m.overallScore}/100</span>}
+                              {m.scoreBand && <span className="text-stone-500">{m.scoreBand}</span>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Selected module summary */}
+                    {selectedModule && (
+                      <div className="bg-stone-50 rounded-lg border border-stone-200/60 px-3 py-2 text-[11px] text-stone-500">
+                        Corrections for <span className="font-semibold text-stone-600">{selectedModule.title}</span> — v{selectedModule.version} → v{selectedModule.version + 1}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Zone 1: Spine Deck Upload (hidden until module selected in corrections mode) */}
+          <div className={`p-4 pb-3 ${isCorrections ? "border-t border-stone-100" : ""}`} style={isCorrections && !selectedModule ? { display: "none" } : undefined}>
             <div className="flex items-center gap-2 mb-2.5">
               <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Spine Deck</span>
               <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
@@ -284,8 +439,8 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* Zone 2: Module Details — appears immediately after file selection */}
-          {spineSelected && (
+          {/* Zone 2: Module Details — appears immediately after file selection (new module only) */}
+          {spineSelected && !isCorrections && (
             <>
               <div className="border-t border-stone-100 mx-4" />
               <div className="p-4 pt-3 space-y-3">
@@ -439,24 +594,50 @@ export default function UploadPage() {
         <div className="space-y-3">
           <div className="grid grid-cols-5 gap-3">
             <div className="col-span-2 bg-white rounded-lg border border-stone-200 shadow-subtle p-4">
-              <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">Module</h2>
+              <h2 className="text-[11px] font-medium text-stone-500 uppercase tracking-[0.08em] mb-2.5">
+                {isCorrections ? "Corrections" : "Module"}
+              </h2>
               <div className="space-y-2">
-                <div>
-                  <div className="text-[10px] text-stone-400 uppercase tracking-wide">Name</div>
-                  <div className="text-[13px] font-medium text-stone-800">{title}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
-                  <div className="text-[13px] text-stone-600">G{grade} &middot; Ch{chapterNumber}{chapterName ? ` — ${chapterName}` : ""} &middot; M{moduleNumber}</div>
-                </div>
-                {topic && <div>
-                  <div className="text-[10px] text-stone-400 uppercase tracking-wide">Topic</div>
-                  <div className="text-[13px] text-stone-600">{topic}</div>
-                </div>}
-                <div>
-                  <div className="text-[10px] text-stone-400 uppercase tracking-wide">Submitted by</div>
-                  <div className="text-[13px] text-stone-600">{submittedBy}</div>
-                </div>
+                {isCorrections && selectedModule ? (
+                  <>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Module</div>
+                      <div className="text-[13px] font-medium text-stone-800">{selectedModule.title}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Version</div>
+                      <div className="text-[13px] text-stone-600">v{selectedModule.version} → v{selectedModule.version + 1}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
+                      <div className="text-[13px] text-stone-600">
+                        G{selectedModule.grade}
+                        {selectedModule.chapterNumber != null && ` · Ch${selectedModule.chapterNumber}`}
+                        {selectedModule.chapterName && ` — ${selectedModule.chapterName}`}
+                        {selectedModule.moduleNumber != null && ` · M${selectedModule.moduleNumber}`}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Name</div>
+                      <div className="text-[13px] font-medium text-stone-800">{title}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
+                      <div className="text-[13px] text-stone-600">G{grade} &middot; Ch{chapterNumber}{chapterName ? ` — ${chapterName}` : ""} &middot; M{moduleNumber}</div>
+                    </div>
+                    {topic && <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Topic</div>
+                      <div className="text-[13px] text-stone-600">{topic}</div>
+                    </div>}
+                    <div>
+                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Submitted by</div>
+                      <div className="text-[13px] text-stone-600">{submittedBy}</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -521,7 +702,7 @@ export default function UploadPage() {
             </button>
             <button type="button" disabled={submitting} onClick={handleSubmit}
               className="px-6 py-2 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-              {submitting ? submitProgress : "Submit for Review"}
+              {submitting ? submitProgress : isCorrections ? "Submit Corrections" : "Submit for Review"}
             </button>
           </div>
         </div>

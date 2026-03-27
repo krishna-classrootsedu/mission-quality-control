@@ -36,7 +36,9 @@ export const seedAll = mutation({
       learningObjective:
         "Students will understand what fractions represent, identify fractions in everyday objects, and compare simple fractions with like denominators using visual models.",
       grade: 4,
-      phase: "Phase 2",
+      chapterNumber: 4,
+      chapterName: "Fractions and Decimals",
+      moduleNumber: 8,
       topic: "Fractions",
       slideCount: 30,
       status: "review_complete",

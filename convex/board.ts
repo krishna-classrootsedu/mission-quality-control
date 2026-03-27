@@ -52,7 +52,10 @@ function statusToColumn(status: string): BoardColumn {
       return "Gate Check";
     case "all_reviews_complete":
       return "Integration";
+    case "corrections_intake_complete":
+      return "In Review";
     case "review_complete":
+    case "corrections_review_complete":
       return "Vinay Review";
     case "vinay_reviewed":
     case "creator_fixing":
@@ -76,7 +79,7 @@ export const getBoard = query({
 
     // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules
-      .filter((m) => m.status === "review_complete")
+      .filter((m) => m.status === "review_complete" || m.status === "corrections_review_complete")
       .map((m) => ({ moduleId: m.moduleId, version: m.version }));
 
     const recCountsMap = new Map<string, { total: number; pending: number; accepted: number; rejected: number }>();
