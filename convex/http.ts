@@ -1,8 +1,10 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal, api } from "./_generated/api";
+import { auth } from "./auth";
 
 const http = httpRouter();
+auth.addHttpRoutes(http);
 
 function validateAuth(request: Request): boolean {
   const authHeader = request.headers.get("Authorization");

@@ -6,9 +6,10 @@ import { BOARD_COLUMNS, BoardColumn, ModuleBoardItem } from "@/lib/types";
 import ModuleBoardColumn from "./ModuleBoardColumn";
 
 export default function ModuleBoard() {
-  const boardData = useQuery(api.board.getBoard);
+  const me = useQuery(api.users.me);
+  const boardData = useQuery(api.board.getBoard, me ? {} : "skip");
 
-  if (boardData === undefined) {
+  if (me === undefined || boardData === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex items-center gap-2 text-stone-400 text-sm">
@@ -18,6 +19,13 @@ export default function ModuleBoard() {
           </svg>
           Loading pipeline...
         </div>
+      </div>
+    );
+  }
+  if (me === null) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm text-stone-500">Sign in required to view board.</p>
       </div>
     );
   }

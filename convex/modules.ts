@@ -1,6 +1,7 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { ROLES, canAccessModule, requireAnyRole, requireCurrentUser } from "./lib/authz";
 
 // Valid pipeline statuses
 const VALID_STATUSES = [
@@ -155,6 +156,7 @@ export const updateStatus = internalMutation({
 export const list = query({
   args: { status: v.optional(v.string()) },
   handler: async (ctx, { status }) => {
+    await requireCurrentUser(ctx);
     if (status) {
       return await ctx.db
         .query("modules")
@@ -170,6 +172,8 @@ export const list = query({
 export const detail = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     if (version !== undefined) {
       // Fetch specific version
       const all = await ctx.db
@@ -194,6 +198,12 @@ export const detail = query({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -216,6 +226,12 @@ export const submitModule = mutation({
     fileName: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
     // Generate moduleId from title (slug-style)
@@ -302,6 +318,12 @@ export const submitModuleWithFlow = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
     // Generate moduleId from title
@@ -467,6 +489,7 @@ export const finalizeReview = internalMutation({
 export const correctableModules = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentUser(ctx);
     const all = await ctx.db.query("modules").order("desc").take(200);
     return all
       .filter((m) => !m.deleted && ["vinay_reviewed", "creator_fixing"].includes(m.status))
@@ -491,6 +514,8 @@ export const correctableModules = query({
 export const allVersions = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     const versions = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -529,6 +554,12 @@ export const submitCorrections = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
     // Find existing module (latest version)
@@ -622,6 +653,7 @@ export const submitCorrections = mutation({
 export const pipelineSummary = query({
   args: {},
   handler: async (ctx) => {
+    await requireCurrentUser(ctx);
     const all = await ctx.db.query("modules").collect();
     const counts: Record<string, number> = {};
     for (const m of all) {

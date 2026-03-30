@@ -1,4 +1,5 @@
 import { query } from "./_generated/server";
+import { requireCurrentUser } from "./lib/authz";
 
 // Board column names
 type BoardColumn =
@@ -70,6 +71,7 @@ function statusToColumn(status: string): BoardColumn {
 export const getBoard = query({
   args: {},
   handler: async (ctx): Promise<ModuleBoardItem[]> => {
+    await requireCurrentUser(ctx);
     const allModules = await ctx.db
       .query("modules")
       .withIndex("by_updatedAt")

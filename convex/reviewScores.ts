@@ -1,6 +1,7 @@
 import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { canAccessModule } from "./lib/authz";
 
 export const push = internalMutation({
   args: {
@@ -110,6 +111,8 @@ export const push = internalMutation({
 export const byModule = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     const q = ctx.db
       .query("reviewScores")
       .withIndex("by_moduleId_version", (q) =>

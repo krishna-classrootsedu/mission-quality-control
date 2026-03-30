@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { ROLES, canAccessModule, canReviewModule, requireAnyRole } from "./lib/authz";
 
 // Batch-insert recommendations (called by Integrator or Reviewers)
 // When called WITH score fields: updates module score + transitions to review_complete (Integrator path)
@@ -111,6 +112,7 @@ export const review = mutation({
     vinayComment: v.optional(v.string()),
   },
   handler: async (ctx, { recommendationId, reviewStatus, vinayComment }) => {
+    await requireAnyRole(ctx, [ROLES.LEAD_REVIEWER, ROLES.MANAGER, ROLES.ADMIN]);
     if (!["accepted", "rejected"].includes(reviewStatus)) {
       throw new Error(`Invalid reviewStatus: ${reviewStatus}`);
     }
@@ -133,6 +135,8 @@ export const completeVinayReview = mutation({
     version: v.number(),
   },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canReviewModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no review access");
     const recs = await ctx.db
       .query("recommendations")
       .withIndex("by_moduleId_version", (q) =>
@@ -177,6 +181,8 @@ export const addCustomReview = mutation({
     reviewerName: v.string(),
   },
   handler: async (ctx, args) => {
+    const allowed = await canReviewModule(ctx, args.moduleId);
+    if (!allowed) throw new Error("Forbidden: no review access");
     // Count existing recs to get next directiveIndex
     const existing = await ctx.db
       .query("recommendations")
@@ -228,6 +234,8 @@ export const acceptedByModuleVersion = internalQuery({
 export const byModule = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     const q = ctx.db
       .query("recommendations")
       .withIndex("by_moduleId_version", (q) =>

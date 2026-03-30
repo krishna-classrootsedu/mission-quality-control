@@ -23,9 +23,17 @@ export default function ModuleDetailPage() {
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const me = useQuery(api.users.me);
 
-  const allVersions = useQuery(api.modules.allVersions, { moduleId });
-  const moduleData = useQuery(api.modules.detail, selectedVersion != null ? { moduleId, version: selectedVersion } : { moduleId });
+  const allVersions = useQuery(api.modules.allVersions, me ? { moduleId } : "skip");
+  const moduleData = useQuery(
+    api.modules.detail,
+    me
+      ? selectedVersion != null
+        ? { moduleId, version: selectedVersion }
+        : { moduleId }
+      : "skip"
+  );
   const reviewScores = useQuery(
     api.reviewScores.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
@@ -96,6 +104,11 @@ export default function ModuleDetailPage() {
   );
 
   const handleSave = async () => {
+    const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+    if (!canReview) {
+      alert("Permission denied");
+      return;
+    }
     setSaving(true);
     try {
       const saved = new Map(decisions);
@@ -117,6 +130,11 @@ export default function ModuleDetailPage() {
   };
 
   const handleComplete = async () => {
+    const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+    if (!canReview) {
+      alert("Permission denied");
+      return;
+    }
     if (!moduleData) return;
     try {
       const result = await completeMutation({ moduleId, version: moduleData.version });
@@ -140,7 +158,7 @@ export default function ModuleDetailPage() {
     return badges;
   }, [recommendations]);
 
-  if (moduleData === undefined) {
+  if (me === undefined || moduleData === undefined) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="space-y-3">
@@ -156,6 +174,14 @@ export default function ModuleDetailPage() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-stone-400">Module not found: {moduleId}</div>
+      </div>
+    );
+  }
+
+  if (me === null) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-stone-500">Sign in required to view this module.</div>
       </div>
     );
   }

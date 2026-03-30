@@ -4,7 +4,21 @@ import { mutation, internalMutation } from "./_generated/server";
 export const clearAll = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const tables = ["modules", "intakeResults", "parsedSlides", "gatekeeperResults", "reviewScores", "recommendations", "flowMap", "agentActivity"] as const;
+    const tables = [
+      "userProfiles",
+      "passwordResetTokens",
+      "modulePermissions",
+      "auditAuthEvents",
+      "modules",
+      "intakeResults",
+      "parsedSlides",
+      "gatekeeperResults",
+      "reviewScores",
+      "recommendations",
+      "flowMap",
+      "agentActivity",
+      "tokenUsage",
+    ] as const;
     const counts: Record<string, number> = {};
     for (const table of tables) {
       const rows = await ctx.db.query(table).collect();

@@ -1,10 +1,13 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { canDeleteModule } from "./lib/authz";
 
 // Soft-delete a module + hard-delete all child rows
 export const deleteModule = mutation({
   args: { moduleId: v.string(), version: v.number() },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canDeleteModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: only manager/admin can delete");
     // Find the module
     const module = await ctx.db
       .query("modules")
