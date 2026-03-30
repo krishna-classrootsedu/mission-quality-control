@@ -115,6 +115,11 @@ export default function NavBar() {
     }
   }
 
+  const visibleLinks =
+    me?.role === "admin"
+      ? [...NAV_LINKS, { href: "/users", label: "Users" }]
+      : NAV_LINKS;
+
   return (
     <>
       <nav className="bg-stone-50/90 backdrop-blur-xl border-b border-stone-200/60 h-12 sticky top-0 z-20">
@@ -125,7 +130,7 @@ export default function NavBar() {
             </Link>
             <div className="w-px h-5 bg-stone-200 mx-4" />
             <div className="flex items-center gap-1">
-              {NAV_LINKS.map((link) => {
+              {visibleLinks.map((link) => {
                 const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
                 return (
                   <Link

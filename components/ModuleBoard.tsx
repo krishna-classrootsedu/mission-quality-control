@@ -7,9 +7,10 @@ import ModuleBoardColumn from "./ModuleBoardColumn";
 
 export default function ModuleBoard() {
   const me = useQuery(api.users.me);
-  const boardData = useQuery(api.board.getBoard, me ? {} : "skip");
+  const shouldLoadBoard = me !== null && me !== undefined;
+  const boardData = useQuery(api.board.getBoard, shouldLoadBoard ? {} : "skip");
 
-  if (me === undefined || boardData === undefined) {
+  if (me === undefined || (shouldLoadBoard && boardData === undefined)) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex items-center gap-2 text-stone-400 text-sm">
@@ -32,7 +33,7 @@ export default function ModuleBoard() {
 
   const grouped = new Map<BoardColumn, ModuleBoardItem[]>();
   for (const col of BOARD_COLUMNS) grouped.set(col, []);
-  for (const item of boardData) {
+  for (const item of boardData ?? []) {
     const col = item.column as BoardColumn;
     grouped.get(col)?.push(item);
   }
