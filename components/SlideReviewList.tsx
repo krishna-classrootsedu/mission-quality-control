@@ -40,11 +40,13 @@ export default function SlideReviewList({
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   slides: Slide[];
   recommendations: Recommendation[];
   decisions: Map<string, Decision>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const { slideRecs, sortedSlides } = useMemo(() => {
     const slideMap = new Map<number, Recommendation[]>();
@@ -95,6 +97,7 @@ export default function SlideReviewList({
                 recommendations={slideRecs.get(slide.slideNumber) ?? []}
                 decisions={decisions}
                 onDecisionChange={onDecisionChange}
+                readOnly={readOnly}
               />
             </motion.div>
           ))}
@@ -111,6 +114,7 @@ export default function SlideReviewList({
                   recommendation={r}
                   decision={decisions.get(r._id)}
                   onDecisionChange={onDecisionChange}
+                  readOnly={readOnly}
                 />
               ))}
           </div>

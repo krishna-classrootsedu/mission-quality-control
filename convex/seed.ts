@@ -1,4 +1,4 @@
-import { mutation, internalMutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 
 // Clear ALL data from ALL tables + file storage — full reset
 export const clearAll = internalMutation({
@@ -37,7 +37,7 @@ export const clearAll = internalMutation({
   },
 });
 
-export const seedAll = mutation({
+export const seedAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = new Date().toISOString();

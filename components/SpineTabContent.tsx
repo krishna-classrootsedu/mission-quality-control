@@ -69,6 +69,7 @@ export default function SpineTabContent({
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   reviewScores: ReviewScoreRow[];
   gatekeeperData: GatekeeperResult | null;
@@ -76,6 +77,7 @@ export default function SpineTabContent({
   recommendations: Recommendation[];
   decisions: Map<string, Decision>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const spineScores = reviewScores.find((rs) => rs.reviewPass === "spine");
   const hasSourceFiles = slides.some((s) => s.sourceFile);
@@ -108,6 +110,7 @@ export default function SpineTabContent({
         recommendations={spineRecs}
         decisions={decisions}
         onDecisionChange={onDecisionChange}
+        readOnly={readOnly}
       />
     </div>
   );

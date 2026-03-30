@@ -1,5 +1,6 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireCurrentUser } from "./lib/authz";
 
 // Ingest a single activity entry (called by agents via HTTP)
 export const ingest = internalMutation({
@@ -34,8 +35,21 @@ export const ingest = internalMutation({
   },
 });
 
-// Recent activity entries
+// Recent activity entries (authenticated)
 export const recent = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    await requireCurrentUser(ctx);
+    return await ctx.db
+      .query("agentActivity")
+      .withIndex("by_timestamp")
+      .order("desc")
+      .take(limit ?? 50);
+  },
+});
+
+// Agent-only variant (no user session, API-key gated at HTTP layer)
+export const internalRecent = internalQuery({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
     return await ctx.db

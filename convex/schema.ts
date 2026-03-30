@@ -97,13 +97,15 @@ export default defineSchema({
     deleted: v.optional(v.boolean()),
     // Metadata
     submittedBy: v.optional(v.string()),
+    submittedByUserId: v.optional(v.id("users")),
     submittedAt: v.string(),
     updatedAt: v.string(),
     completedAt: v.optional(v.string()),
   })
     .index("by_moduleId", ["moduleId"])
     .index("by_status", ["status"])
-    .index("by_updatedAt", ["updatedAt"]),
+    .index("by_updatedAt", ["updatedAt"])
+    .index("by_submittedByUserId", ["submittedByUserId"]),
 
   // Reader output — one per module+version
   intakeResults: defineTable({

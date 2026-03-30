@@ -1,4 +1,4 @@
-import { query, internalMutation } from "./_generated/server";
+import { query, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { canAccessModule } from "./lib/authz";
 
@@ -33,6 +33,21 @@ export const byModule = query({
   handler: async (ctx, { moduleId, version }) => {
     const allowed = await canAccessModule(ctx, moduleId);
     if (!allowed) throw new Error("Forbidden: no module access");
+    const q = ctx.db
+      .query("parsedSlides")
+      .withIndex("by_moduleId_version", (q) =>
+        version !== undefined
+          ? q.eq("moduleId", moduleId).eq("version", version)
+          : q.eq("moduleId", moduleId)
+      );
+    return await q.collect();
+  },
+});
+
+// Internal variant for HTTP agent routes
+export const internalByModule = internalQuery({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
     const q = ctx.db
       .query("parsedSlides")
       .withIndex("by_moduleId_version", (q) =>

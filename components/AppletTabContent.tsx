@@ -73,6 +73,7 @@ export default function AppletTabContent({
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   appletKey: string;
   appletLabel: string;
@@ -82,6 +83,7 @@ export default function AppletTabContent({
   recommendations: Recommendation[];
   decisions: Map<string, Decision>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const appletScores = reviewScores.find((rs) => rs.reviewPass === appletKey);
 
@@ -116,6 +118,7 @@ export default function AppletTabContent({
         recommendations={appletRecs}
         decisions={decisions}
         onDecisionChange={onDecisionChange}
+        readOnly={readOnly}
       />
     </div>
   );

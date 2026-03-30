@@ -1,5 +1,6 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireCurrentUser } from "./lib/authz";
 
 // Push a single token usage record (called by Orchestrator via HTTP)
 export const push = internalMutation({
@@ -74,10 +75,10 @@ export const pushBatch = internalMutation({
   },
 });
 
-// All token records for a module
 export const byModule = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
+    await requireCurrentUser(ctx, { allowFirstLogin: true });
     return await ctx.db
       .query("tokenUsage")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -85,10 +86,10 @@ export const byModule = query({
   },
 });
 
-// Daily aggregates for the Usage tab
 export const dailyAggregate = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    await requireCurrentUser(ctx, { allowFirstLogin: true });
     const all = await ctx.db
       .query("tokenUsage")
       .withIndex("by_timestamp")

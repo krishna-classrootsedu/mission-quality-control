@@ -42,19 +42,27 @@ export async function requireCurrentUser(
   return { _id: userId, role: profile.role, isFirstLogin, isActive: profile.isActive };
 }
 
-export async function requireAnyRole(ctx: Ctx, allowedRoles: string[]): Promise<AppUser> {
-  const user = await requireCurrentUser(ctx);
+export async function requireAnyRole(
+  ctx: Ctx,
+  allowedRoles: string[],
+  options?: { allowFirstLogin?: boolean }
+): Promise<AppUser> {
+  const user = await requireCurrentUser(ctx, options);
   if (!allowedRoles.includes(user.role)) {
     throw new Error("Forbidden: insufficient role");
   }
   return user;
 }
 
-async function hasOverridePermission(ctx: Ctx, moduleId: string, permission: string): Promise<boolean> {
-  const user = await requireCurrentUser(ctx);
+async function hasOverridePermission(
+  ctx: Ctx,
+  moduleId: string,
+  permission: string,
+  userId: Id<"users">
+): Promise<boolean> {
   const override = await ctx.db
     .query("modulePermissions")
-    .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId).eq("userId", user._id))
+    .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId).eq("userId", userId))
     .first();
   if (!override) return false;
   if (override.expiresAt && new Date(override.expiresAt).getTime() < Date.now()) return false;
@@ -62,16 +70,63 @@ async function hasOverridePermission(ctx: Ctx, moduleId: string, permission: str
 }
 
 export async function canAccessModule(ctx: Ctx, moduleId: string): Promise<boolean> {
-  const user = await requireCurrentUser(ctx);
-  if (
-    user.role === ROLES.ADMIN ||
-    user.role === ROLES.MANAGER ||
-    user.role === ROLES.LEAD_REVIEWER ||
-    user.role === ROLES.CONTENT_CREATOR
-  ) {
-    return true;
+  const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
+  if (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER) return true;
+
+  if (user.role === ROLES.LEAD_REVIEWER) {
+    const perm = await ctx.db
+      .query("modulePermissions")
+      .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId).eq("userId", user._id))
+      .first();
+    if (perm && (!perm.expiresAt || new Date(perm.expiresAt).getTime() >= Date.now())) return true;
+    return false;
   }
-  return hasOverridePermission(ctx, moduleId, "module:view");
+
+  if (user.role === ROLES.CONTENT_CREATOR) {
+    const mod = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .first();
+    return mod?.submittedByUserId === user._id;
+  }
+
+  return hasOverridePermission(ctx, moduleId, "module:view", user._id);
+}
+
+/**
+ * Returns module docs filtered by the user's role:
+ * - admin/manager: all non-deleted modules
+ * - lead_reviewer: only modules allocated via modulePermissions
+ * - content_creator: only modules they submitted
+ */
+export async function getModulesForUser(ctx: Ctx): Promise<{ user: AppUser; modules: any[] }> {
+  const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
+  const all = await ctx.db.query("modules").order("desc").take(500);
+  const active = all.filter((m) => !m.deleted);
+
+  if (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER) {
+    return { user, modules: active };
+  }
+
+  if (user.role === ROLES.LEAD_REVIEWER) {
+    const perms = await ctx.db
+      .query("modulePermissions")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .collect();
+    const now = Date.now();
+    const allocatedModuleIds = new Set(
+      perms
+        .filter((p) => !p.expiresAt || new Date(p.expiresAt).getTime() >= now)
+        .map((p) => p.moduleId)
+    );
+    return { user, modules: active.filter((m) => allocatedModuleIds.has(m.moduleId)) };
+  }
+
+  if (user.role === ROLES.CONTENT_CREATOR) {
+    return { user, modules: active.filter((m) => m.submittedByUserId === user._id) };
+  }
+
+  return { user, modules: [] };
 }
 
 export async function canReviewModule(ctx: Ctx, moduleId: string): Promise<boolean> {
@@ -83,12 +138,12 @@ export async function canReviewModule(ctx: Ctx, moduleId: string): Promise<boole
   ) {
     return true;
   }
-  return hasOverridePermission(ctx, moduleId, "module:review");
+  return hasOverridePermission(ctx, moduleId, "module:review", user._id);
 }
 
 export async function canDeleteModule(ctx: Ctx, moduleId: string): Promise<boolean> {
   const user = await requireCurrentUser(ctx);
   if (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER) return true;
-  return hasOverridePermission(ctx, moduleId, "module:delete");
+  return hasOverridePermission(ctx, moduleId, "module:delete", user._id);
 }
 

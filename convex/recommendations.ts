@@ -1,7 +1,7 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
-import { ROLES, canAccessModule, canReviewModule, requireAnyRole } from "./lib/authz";
+import { ROLES, canAccessModule, canReviewModule, requireAnyRole, requireCurrentUser } from "./lib/authz";
 
 // Batch-insert recommendations (called by Integrator or Reviewers)
 // When called WITH score fields: updates module score + transitions to review_complete (Integrator path)
@@ -120,6 +120,11 @@ export const review = mutation({
       throw new Error("Comment is mandatory when rejecting a recommendation.");
     }
 
+    const rec = await ctx.db.get(recommendationId);
+    if (!rec) throw new Error("Recommendation not found");
+    const allowed = await canReviewModule(ctx, rec.moduleId);
+    if (!allowed) throw new Error("Forbidden: no review access for this module");
+
     await ctx.db.patch(recommendationId, {
       reviewStatus,
       vinayComment: vinayComment ?? undefined,
@@ -230,12 +235,65 @@ export const acceptedByModuleVersion = internalQuery({
   },
 });
 
-// Query recommendations for a module+version
-export const byModule = query({
+// --- Internal variants for HTTP agent routes (API-key gated, no user session) ---
+
+export const internalReview = internalMutation({
+  args: {
+    recommendationId: v.id("recommendations"),
+    reviewStatus: v.string(),
+    vinayComment: v.optional(v.string()),
+  },
+  handler: async (ctx, { recommendationId, reviewStatus, vinayComment }) => {
+    if (!["accepted", "rejected"].includes(reviewStatus)) {
+      throw new Error(`Invalid reviewStatus: ${reviewStatus}`);
+    }
+    if (reviewStatus === "rejected" && !vinayComment) {
+      throw new Error("Comment is mandatory when rejecting a recommendation.");
+    }
+    await ctx.db.patch(recommendationId, {
+      reviewStatus,
+      vinayComment: vinayComment ?? undefined,
+      reviewedAt: new Date().toISOString(),
+    });
+  },
+});
+
+export const internalCompleteVinayReview = internalMutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+  },
+  handler: async (ctx, { moduleId, version }) => {
+    const recs = await ctx.db
+      .query("recommendations")
+      .withIndex("by_moduleId_version", (q) =>
+        q.eq("moduleId", moduleId).eq("version", version)
+      )
+      .collect();
+    const pending = recs.filter((r) => r.reviewStatus === "pending");
+    if (pending.length > 0) {
+      throw new Error(`${pending.length} recommendations still pending.`);
+    }
+    const module = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .order("desc")
+      .first();
+    if (module && module.version === version) {
+      await ctx.db.patch(module._id, {
+        status: "vinay_reviewed",
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
+    const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
+    return { accepted, rejected, total: recs.length };
+  },
+});
+
+export const internalByModule = internalQuery({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
-    const allowed = await canAccessModule(ctx, moduleId);
-    if (!allowed) throw new Error("Forbidden: no module access");
     const q = ctx.db
       .query("recommendations")
       .withIndex("by_moduleId_version", (q) =>
@@ -244,5 +302,27 @@ export const byModule = query({
           : q.eq("moduleId", moduleId)
       );
     return await q.collect();
+  },
+});
+
+export const byModule = query({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+    const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
+    const recs = await ctx.db
+      .query("recommendations")
+      .withIndex("by_moduleId_version", (q) =>
+        version !== undefined
+          ? q.eq("moduleId", moduleId).eq("version", version)
+          : q.eq("moduleId", moduleId)
+      )
+      .collect();
+
+    if (user.role === ROLES.CONTENT_CREATOR) {
+      return recs.filter((r) => r.reviewStatus !== "pending");
+    }
+    return recs;
   },
 });

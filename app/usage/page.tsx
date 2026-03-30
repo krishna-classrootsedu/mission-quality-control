@@ -11,9 +11,29 @@ function formatTokens(n: number): string {
 }
 
 export default function UsagePage() {
-  const data = useQuery(api.tokenUsage.dailyAggregate, { limit: 500 });
+  const me = useQuery(api.users.me);
+  const data = useQuery(
+    api.tokenUsage.dailyAggregate,
+    me !== null && me !== undefined ? { limit: 500 } : "skip"
+  );
   const [page, setPage] = useState(0);
   const pageSize = 20;
+
+  if (me === undefined) {
+    return (
+      <main className="max-w-[1400px] mx-auto px-6 py-8">
+        <p className="text-sm text-stone-400">Loading...</p>
+      </main>
+    );
+  }
+
+  if (me === null) {
+    return (
+      <main className="max-w-[1400px] mx-auto px-6 py-8">
+        <p className="text-sm text-stone-500">Sign in required to view usage data.</p>
+      </main>
+    );
+  }
 
   if (data === undefined) {
     return (

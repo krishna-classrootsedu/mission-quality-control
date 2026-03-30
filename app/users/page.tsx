@@ -13,6 +13,7 @@ export default function UsersPage() {
   const users = useQuery(api.users.list, me?.role === "admin" ? {} : "skip");
   const createUser = useMutation(api.users.createUser);
   const setRole = useMutation(api.users.setRole);
+  const adminGenerateResetToken = useMutation(api.users.adminGenerateResetToken);
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -23,6 +24,7 @@ export default function UsersPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [lastTempPassword, setLastTempPassword] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<Id<"users"> | null>(null);
+  const [resetTokenResult, setResetTokenResult] = useState<{ userId: Id<"users">; token: string } | null>(null);
 
   async function onCreateUser(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,6 +63,19 @@ export default function UsersPage() {
       setError(err instanceof Error ? err.message : "Failed to update user");
     } finally {
       setUpdatingUserId(null);
+    }
+  }
+
+  async function onGenerateResetToken(userId: Id<"users">) {
+    setError(null);
+    setSuccess(null);
+    setResetTokenResult(null);
+    try {
+      const result = await adminGenerateResetToken({ userId });
+      setResetTokenResult({ userId, token: result.resetToken });
+      setSuccess(`Reset token generated (expires in ${result.expiresInMinutes} min)`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate reset token");
     }
   }
 
@@ -176,6 +191,7 @@ export default function UsersPage() {
                   <th className="text-left py-2">Role</th>
                   <th className="text-left py-2">Active</th>
                   <th className="text-left py-2">First Login</th>
+                  <th className="text-left py-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -218,6 +234,19 @@ export default function UsersPage() {
                       />
                     </td>
                     <td className="py-2 text-stone-500">{u.isFirstLogin ? "Yes" : "No"}</td>
+                    <td className="py-2">
+                      <button
+                        onClick={() => void onGenerateResetToken(u.userId)}
+                        className="px-2 py-1 text-[11px] border border-stone-200 rounded text-stone-600 hover:bg-stone-50"
+                      >
+                        Reset Password
+                      </button>
+                      {resetTokenResult?.userId === u.userId && (
+                        <div className="mt-1 text-[11px] text-stone-500 font-mono break-all">
+                          {resetTokenResult.token}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

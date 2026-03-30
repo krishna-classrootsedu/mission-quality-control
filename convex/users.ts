@@ -123,7 +123,7 @@ export const upsertSelf = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireAnyRole(ctx, [ROLES.ADMIN]);
+    await requireAnyRole(ctx, [ROLES.ADMIN], { allowFirstLogin: true });
     const profiles = await ctx.db.query("userProfiles").collect();
     const users = await Promise.all(profiles.map((p) => ctx.db.get(p.userId)));
     return profiles.map((p, idx) => ({
@@ -320,9 +320,52 @@ export const requestPasswordReset = mutation({
 
     return {
       success: true,
-      // For internal tooling flows, the UI can display or deliver this token.
-      resetToken: process.env.NODE_ENV === "production" ? undefined : token,
+      resetToken: token,
     };
+  },
+});
+
+// Admin-only: generate a reset token for any user (always returns token)
+export const adminGenerateResetToken = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const actor = await requireAnyRole(ctx, [ROLES.ADMIN]);
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!profile) throw new Error("User profile not found");
+
+    const now = new Date();
+    const token = generateToken();
+    const tokenHash = await hashToken(token);
+
+    const existing = await ctx.db
+      .query("passwordResetTokens")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.delete(row._id);
+    }
+
+    await ctx.db.insert("passwordResetTokens", {
+      userId: args.userId,
+      tokenHash,
+      expiresAt: new Date(now.getTime() + 1000 * 60 * 60).toISOString(),
+      createdAt: now.toISOString(),
+    });
+
+    await ctx.db.insert("auditAuthEvents", {
+      actorUserId: actor._id,
+      targetUserId: args.userId,
+      action: "admin_reset_token_generated",
+      createdAt: now.toISOString(),
+    });
+
+    return { success: true, resetToken: token, expiresInMinutes: 60 };
   },
 });
 
@@ -482,6 +525,68 @@ export const setUserRoleByEmailInternal = internalMutation({
   },
 });
 
+// Operational utility for direct password reset from Convex CLI in controlled environments.
+export const setUserPasswordByEmailInternal = internalMutation({
+  args: {
+    email: v.string(),
+    newPassword: v.string(),
+    clearFirstLogin: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const now = new Date().toISOString();
+    const email = normalizeEmail(args.email);
+
+    let user = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email))
+      .first();
+
+    if (!user) {
+      const existingPasswordAccount = await ctx.db
+        .query("authAccounts")
+        .withIndex("providerAndAccountId", (q) =>
+          q.eq("provider", "password").eq("providerAccountId", email)
+        )
+        .first();
+      if (existingPasswordAccount) {
+        user = await ctx.db.get(existingPasswordAccount.userId);
+      }
+    }
+
+    if (!user) {
+      throw new Error(`User not found for email: ${email}`);
+    }
+
+    await modifyAccountCredentials(
+      ctx as unknown as Parameters<typeof modifyAccountCredentials>[0],
+      {
+        provider: "password",
+        account: { id: email, secret: args.newPassword },
+      }
+    );
+
+    const profile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .first();
+    if (profile && (args.clearFirstLogin ?? true)) {
+      await ctx.db.patch(profile._id, {
+        isFirstLogin: false,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.insert("auditAuthEvents", {
+      targetUserId: user._id,
+      action: "internal_password_reset",
+      metadata: { email },
+      createdAt: now,
+    });
+
+    return { success: true, userId: user._id, email };
+  },
+});
+
 export const grantModulePermissions = mutation({
   args: {
     moduleId: v.string(),
@@ -551,6 +656,51 @@ export const revokeModulePermissions = mutation({
       createdAt: new Date().toISOString(),
     });
     return { success: true };
+  },
+});
+
+export const reviewers = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const profiles = await ctx.db.query("userProfiles").collect();
+    const reviewerProfiles = profiles.filter(
+      (p) => p.role === ROLES.LEAD_REVIEWER && p.isActive
+    );
+    const users = await Promise.all(
+      reviewerProfiles.map((p) => ctx.db.get(p.userId))
+    );
+    return reviewerProfiles.map((p, i) => ({
+      userId: p.userId,
+      name: users[i]?.name ?? null,
+      email: users[i]?.email ?? null,
+      role: p.role,
+    }));
+  },
+});
+
+export const moduleAllocations = query({
+  args: { moduleId: v.string() },
+  handler: async (ctx, { moduleId }) => {
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const perms = await ctx.db
+      .query("modulePermissions")
+      .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId))
+      .collect();
+    const now = Date.now();
+    const active = perms.filter(
+      (p) => !p.expiresAt || new Date(p.expiresAt).getTime() >= now
+    );
+    const users = await Promise.all(
+      active.map((p) => ctx.db.get(p.userId))
+    );
+    return active.map((p, i) => ({
+      _id: p._id,
+      userId: p.userId,
+      name: users[i]?.name ?? null,
+      email: users[i]?.email ?? null,
+      permissions: p.permissions,
+    }));
   },
 });
 

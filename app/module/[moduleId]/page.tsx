@@ -23,7 +23,10 @@ export default function ModuleDetailPage() {
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [showAllocation, setShowAllocation] = useState(false);
   const me = useQuery(api.users.me);
+
+  const canManage = me?.role === "manager" || me?.role === "admin";
 
   const allVersions = useQuery(api.modules.allVersions, me ? { moduleId } : "skip");
   const moduleData = useQuery(
@@ -186,6 +189,7 @@ export default function ModuleDetailPage() {
     );
   }
 
+  const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
   const recCount = recommendations?.length ?? 0;
   const pendingCount = recommendations?.filter((r) => r.reviewStatus === "pending").length ?? 0;
   const saveableCount = Array.from(decisions.values()).filter((d) => d.status !== "pending").length;
@@ -231,18 +235,36 @@ export default function ModuleDetailPage() {
                 )}
               </div>
             </div>
-            {moduleData.overallPercentage != null && (
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="font-display text-4xl text-stone-900 leading-none">
-                    {moduleData.overallPercentage}<span className="text-3xl">%</span>
+            <div className="flex items-center gap-3">
+              {canManage && (
+                <button
+                  onClick={() => setShowAllocation((v) => !v)}
+                  className={`px-3 py-1.5 text-[12px] font-medium rounded-lg border transition-all ${
+                    showAllocation
+                      ? "bg-stone-800 text-white border-stone-800"
+                      : "bg-white text-stone-600 border-stone-200 hover:border-stone-300"
+                  }`}
+                >
+                  Assign Reviewers
+                </button>
+              )}
+              {moduleData.overallPercentage != null && (
+                <>
+                  <div className="text-right">
+                    <div className="font-display text-4xl text-stone-900 leading-none">
+                      {moduleData.overallPercentage}<span className="text-3xl">%</span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
                   </div>
-                  <div className="text-[11px] text-stone-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
-                </div>
-                <ScoreBandBadge band={moduleData.scoreBand ?? null} />
-              </div>
-            )}
+                  <ScoreBandBadge band={moduleData.scoreBand ?? null} />
+                </>
+              )}
+            </div>
           </div>
+
+          {canManage && showAllocation && moduleData && (
+            <ModuleAllocationPanel moduleId={moduleData.moduleId} />
+          )}
 
           {/* Tabs */}
           <div className="flex gap-0 -mb-px overflow-x-auto">
@@ -296,6 +318,7 @@ export default function ModuleDetailPage() {
                 sourceFiles={moduleData.sourceFiles}
                 slides={slidesWithUrls ?? []}
                 recommendations={recommendations ?? []}
+                readOnly={!canReview}
               />
             ) : activeTab === "global" ? (
               <GlobalContent
@@ -304,6 +327,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : activeTab === "spine" ? (
               <SpineTabContent
@@ -313,6 +337,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : activeTab.startsWith("applet_") ? (
               <AppletTabContent
@@ -324,6 +349,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : null}
           </motion.div>
@@ -331,8 +357,8 @@ export default function ModuleDetailPage() {
         </div>
       </main>
 
-      {/* Sticky save bar */}
-      {recCount > 0 && activeTab !== "overview" && (
+      {/* Sticky save bar — reviewers only */}
+      {canReview && recCount > 0 && activeTab !== "overview" && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-stone-200/60 shadow-bar px-6 py-3.5 z-20">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="text-xs text-stone-500 flex items-center gap-3">
@@ -697,12 +723,14 @@ function CustomTabContent({
   sourceFiles,
   slides,
   recommendations,
+  readOnly = false,
 }: {
   moduleId: string;
   version: number;
   sourceFiles?: { type: string; label: string }[];
   slides: { slideNumber: number; sourceFile?: string }[];
   recommendations: CustomRecommendation[];
+  readOnly?: boolean;
 }) {
   const addCustomReview = useMutation(api.recommendations.addCustomReview);
   const customRecs = recommendations.filter((r) => r.source === "reviewer");
@@ -734,11 +762,13 @@ function CustomTabContent({
 
   return (
     <div className="space-y-3">
-      <CustomReviewForm
-        sourceFiles={sourceFiles}
-        slides={slides}
-        onSubmit={handleSubmit}
-      />
+      {!readOnly && (
+        <CustomReviewForm
+          sourceFiles={sourceFiles}
+          slides={slides}
+          onSubmit={handleSubmit}
+        />
+      )}
 
       {customRecs.length > 0 ? (
         <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
@@ -805,12 +835,90 @@ type Recommendation = {
   agentName?: string;
 };
 
+function ModuleAllocationPanel({ moduleId }: { moduleId: string }) {
+  const reviewers = useQuery(api.users.reviewers);
+  const allocations = useQuery(api.users.moduleAllocations, { moduleId });
+  const grantPermission = useMutation(api.users.grantModulePermissions);
+  const revokePermission = useMutation(api.users.revokeModulePermissions);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const allocatedIds = new Set(allocations?.map((a) => a.userId) ?? []);
+
+  const handleAssign = async (userId: Id<"users">) => {
+    setBusy(userId);
+    try {
+      await grantPermission({
+        moduleId,
+        userId,
+        permissions: ["module:view", "module:review"],
+        grantSource: "manager_ui",
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to assign");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleUnassign = async (userId: Id<"users">) => {
+    setBusy(userId);
+    try {
+      await revokePermission({ moduleId, userId });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to unassign");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!reviewers || !allocations) {
+    return (
+      <div className="py-2">
+        <div className="h-6 w-40 animate-pulse bg-stone-100 rounded" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-2 border-t border-stone-100">
+      <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">
+        Assigned Reviewers
+      </span>
+      <div className="flex flex-wrap gap-2 mt-2">
+        {reviewers.map((r) => {
+          const isAllocated = allocatedIds.has(r.userId);
+          const isBusy = busy === r.userId;
+          return (
+            <button
+              key={r.userId}
+              disabled={isBusy}
+              onClick={() => isAllocated ? handleUnassign(r.userId) : handleAssign(r.userId)}
+              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all disabled:opacity-50 ${
+                isAllocated
+                  ? "bg-stone-800 text-white border-stone-800 hover:bg-stone-700"
+                  : "bg-white text-stone-500 border-stone-200 hover:border-stone-300 hover:text-stone-700"
+              }`}
+            >
+              {r.name ?? r.email ?? "Unknown"}
+              {isAllocated && " \u2713"}
+            </button>
+          );
+        })}
+        {reviewers.length === 0 && (
+          <span className="text-[12px] text-stone-400">No lead reviewers available</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GlobalContent({
   moduleData,
   reviewScores,
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   moduleData: {
     overallScore?: number;
@@ -821,6 +929,7 @@ function GlobalContent({
   recommendations: Recommendation[];
   decisions: Map<string, { status: string; comment: string }>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const globalRecs = recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer");
   const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
@@ -849,6 +958,7 @@ function GlobalContent({
                   recommendation={r}
                   decision={decisions.get(r._id)}
                   onDecisionChange={onDecisionChange}
+                  readOnly={readOnly}
                 />
               ))}
           </div>

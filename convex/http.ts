@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { internal, api } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { auth } from "./auth";
 
 const http = httpRouter();
@@ -189,7 +189,7 @@ http.route({
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      await ctx.runMutation(api.recommendations.review, body);
+      await ctx.runMutation(internal.recommendations.internalReview, body);
       return jsonResponse({ success: true });
     } catch (error) {
       return errorResponse(error);
@@ -204,7 +204,7 @@ http.route({
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      const result = await ctx.runMutation(api.recommendations.completeVinayReview, body);
+      const result = await ctx.runMutation(internal.recommendations.internalCompleteVinayReview, body);
       return jsonResponse({ success: true, ...result });
     } catch (error) {
       return errorResponse(error);
@@ -219,7 +219,7 @@ http.route({
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const body = await request.json();
-      await ctx.runMutation(api.flowMap.flag, body);
+      await ctx.runMutation(internal.flowMap.internalFlag, body);
       return jsonResponse({ success: true });
     } catch (error) {
       return errorResponse(error);
@@ -239,7 +239,7 @@ http.route({
     try {
       const url = new URL(request.url);
       const status = url.searchParams.get("status") ?? undefined;
-      const modules = await ctx.runQuery(api.modules.list, { status });
+      const modules = await ctx.runQuery(internal.modules.internalList, { status });
       return jsonResponse(modules);
     } catch (error) {
       return errorResponse(error);
@@ -256,7 +256,7 @@ http.route({
       const url = new URL(request.url);
       const moduleId = url.searchParams.get("moduleId");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
-      const module = await ctx.runQuery(api.modules.detail, { moduleId });
+      const module = await ctx.runQuery(internal.modules.internalDetail, { moduleId });
       return jsonResponse(module);
     } catch (error) {
       return errorResponse(error);
@@ -275,7 +275,7 @@ http.route({
       const versionParam = url.searchParams.get("version");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
       const version = versionParam ? parseInt(versionParam, 10) : undefined;
-      const slides = await ctx.runQuery(api.parsedSlides.byModule, { moduleId, version });
+      const slides = await ctx.runQuery(internal.parsedSlides.internalByModule, { moduleId, version });
       return jsonResponse(slides);
     } catch (error) {
       return errorResponse(error);
@@ -294,7 +294,7 @@ http.route({
       const versionParam = url.searchParams.get("version");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
       const version = versionParam ? parseInt(versionParam, 10) : undefined;
-      const scores = await ctx.runQuery(api.reviewScores.byModule, { moduleId, version });
+      const scores = await ctx.runQuery(internal.reviewScores.internalByModule, { moduleId, version });
       return jsonResponse(scores);
     } catch (error) {
       return errorResponse(error);
@@ -313,7 +313,7 @@ http.route({
       const versionParam = url.searchParams.get("version");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
       const version = versionParam ? parseInt(versionParam, 10) : undefined;
-      const recs = await ctx.runQuery(api.recommendations.byModule, { moduleId, version });
+      const recs = await ctx.runQuery(internal.recommendations.internalByModule, { moduleId, version });
       return jsonResponse(recs);
     } catch (error) {
       return errorResponse(error);
@@ -332,7 +332,7 @@ http.route({
       const versionParam = url.searchParams.get("version");
       if (!moduleId) return jsonResponse({ error: "Missing moduleId" }, 400);
       const version = versionParam ? parseInt(versionParam, 10) : undefined;
-      const flowMap = await ctx.runQuery(api.flowMap.byModule, { moduleId, version });
+      const flowMap = await ctx.runQuery(internal.flowMap.internalByModule, { moduleId, version });
       return jsonResponse(flowMap);
     } catch (error) {
       return errorResponse(error);
@@ -346,7 +346,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
-      const summary = await ctx.runQuery(api.modules.pipelineSummary, {});
+      const summary = await ctx.runQuery(internal.modules.internalPipelineSummary, {});
       return jsonResponse(summary);
     } catch (error) {
       return errorResponse(error);
@@ -363,7 +363,7 @@ http.route({
       const url = new URL(request.url);
       const limitParam = url.searchParams.get("limit");
       const limit = limitParam ? parseInt(limitParam, 10) : undefined;
-      const activity = await ctx.runQuery(api.agentActivity.recent, { limit });
+      const activity = await ctx.runQuery(internal.agentActivity.internalRecent, { limit });
       return jsonResponse(activity);
     } catch (error) {
       return errorResponse(error);

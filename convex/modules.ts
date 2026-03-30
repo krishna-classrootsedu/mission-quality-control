@@ -1,7 +1,7 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
-import { ROLES, canAccessModule, requireAnyRole, requireCurrentUser } from "./lib/authz";
+import { ROLES, canAccessModule, getModulesForUser, requireAnyRole, requireCurrentUser } from "./lib/authz";
 
 // Valid pipeline statuses
 const VALID_STATUSES = [
@@ -156,15 +156,11 @@ export const updateStatus = internalMutation({
 export const list = query({
   args: { status: v.optional(v.string()) },
   handler: async (ctx, { status }) => {
-    await requireCurrentUser(ctx);
+    const { modules } = await getModulesForUser(ctx);
     if (status) {
-      return await ctx.db
-        .query("modules")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .order("desc")
-        .take(200);
+      return modules.filter((m) => m.status === status);
     }
-    return await ctx.db.query("modules").order("desc").take(200);
+    return modules;
   },
 });
 
@@ -226,7 +222,7 @@ export const submitModule = mutation({
     fileName: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireAnyRole(ctx, [
+    const user = await requireAnyRole(ctx, [
       ROLES.CONTENT_CREATOR,
       ROLES.LEAD_REVIEWER,
       ROLES.MANAGER,
@@ -234,7 +230,6 @@ export const submitModule = mutation({
     ]);
     const now = new Date().toISOString();
 
-    // Generate moduleId from title (slug-style)
     const slug = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -242,10 +237,8 @@ export const submitModule = mutation({
       .slice(0, 40);
     const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
 
-    // Get the file URL from storage
     const pptxFileUrl = await ctx.storage.getUrl(args.pptxStorageId);
 
-    // Check for existing module with same title (loose dedup)
     const existing = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -265,6 +258,7 @@ export const submitModule = mutation({
       status: "submitted",
       version: 1,
       submittedBy: args.submittedBy,
+      submittedByUserId: user._id,
       submittedAt: now,
       updatedAt: now,
     });
@@ -318,7 +312,7 @@ export const submitModuleWithFlow = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    await requireAnyRole(ctx, [
+    const user = await requireAnyRole(ctx, [
       ROLES.CONTENT_CREATOR,
       ROLES.LEAD_REVIEWER,
       ROLES.MANAGER,
@@ -326,7 +320,6 @@ export const submitModuleWithFlow = mutation({
     ]);
     const now = new Date().toISOString();
 
-    // Generate moduleId from title
     const slug = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -334,10 +327,8 @@ export const submitModuleWithFlow = mutation({
       .slice(0, 40);
     const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
 
-    // Compute totalApplets from sourceFiles
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
 
-    // Create module record
     const totalSlides = args.slides.length;
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId,
@@ -359,6 +350,7 @@ export const submitModuleWithFlow = mutation({
       completedAppletReviews: 0,
       spineComplete: false,
       submittedBy: args.submittedBy,
+      submittedByUserId: user._id,
       submittedAt: now,
       updatedAt: now,
     });
@@ -489,10 +481,17 @@ export const finalizeReview = internalMutation({
 export const correctableModules = query({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentUser(ctx);
+    const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
     const all = await ctx.db.query("modules").order("desc").take(200);
     return all
-      .filter((m) => !m.deleted && ["vinay_reviewed", "creator_fixing"].includes(m.status))
+      .filter((m) => {
+        if (m.deleted) return false;
+        if (!["vinay_reviewed", "creator_fixing"].includes(m.status)) return false;
+        if (user.role === ROLES.CONTENT_CREATOR) {
+          return m.submittedByUserId === user._id;
+        }
+        return true;
+      })
       .map((m) => ({
         _id: m._id,
         moduleId: m.moduleId,
@@ -554,7 +553,7 @@ export const submitCorrections = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    await requireAnyRole(ctx, [
+    const user = await requireAnyRole(ctx, [
       ROLES.CONTENT_CREATOR,
       ROLES.LEAD_REVIEWER,
       ROLES.MANAGER,
@@ -562,7 +561,6 @@ export const submitCorrections = mutation({
     ]);
     const now = new Date().toISOString();
 
-    // Find existing module (latest version)
     const existing = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
@@ -575,11 +573,14 @@ export const submitCorrections = mutation({
       throw new Error(`Module must be in vinay_reviewed or creator_fixing status, got: ${existing.status}`);
     }
 
+    if (user.role === ROLES.CONTENT_CREATOR && existing.submittedByUserId !== user._id) {
+      throw new Error("Forbidden: you can only submit corrections for your own modules");
+    }
+
     const newVersion = existing.version + 1;
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
     const totalSlides = args.slides.length;
 
-    // Create new version — copy metadata from existing, new files + corrections status
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId: args.moduleId,
       title: existing.title,
@@ -600,6 +601,7 @@ export const submitCorrections = mutation({
       completedAppletReviews: 0,
       spineComplete: false,
       submittedBy: existing.submittedBy,
+      submittedByUserId: existing.submittedByUserId,
       submittedAt: now,
       updatedAt: now,
     });
@@ -653,7 +655,55 @@ export const submitCorrections = mutation({
 export const pipelineSummary = query({
   args: {},
   handler: async (ctx) => {
-    await requireCurrentUser(ctx);
+    const { modules } = await getModulesForUser(ctx);
+    const counts: Record<string, number> = {};
+    for (const m of modules) {
+      counts[m.status] = (counts[m.status] || 0) + 1;
+    }
+    return { total: modules.length, byStatus: counts };
+  },
+});
+
+// --- Internal variants for HTTP agent routes (API-key gated, no user session) ---
+
+export const internalList = internalQuery({
+  args: { status: v.optional(v.string()) },
+  handler: async (ctx, { status }) => {
+    if (status) {
+      return await ctx.db
+        .query("modules")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .order("desc")
+        .take(200);
+    }
+    return await ctx.db.query("modules").order("desc").take(200);
+  },
+});
+
+export const internalDetail = internalQuery({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    if (version !== undefined) {
+      const all = await ctx.db
+        .query("modules")
+        .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+        .collect();
+      const match = all.find((m) => m.version === version && !m.deleted);
+      return match ?? null;
+    }
+    const module = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .order("desc")
+      .first();
+    if (module?.deleted) return null;
+    return module;
+  },
+});
+
+export const internalPipelineSummary = internalQuery({
+  args: {},
+  handler: async (ctx) => {
     const all = await ctx.db.query("modules").collect();
     const counts: Record<string, number> = {};
     for (const m of all) {

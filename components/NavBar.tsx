@@ -1,20 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 
-const NAV_LINKS = [
+type NavLink = { href: string; label: string; roles?: string[] };
+
+const NAV_LINKS: NavLink[] = [
   { href: "/board", label: "Board" },
-  { href: "/upload", label: "Upload" },
+  { href: "/upload", label: "Upload", roles: ["content_creator", "lead_reviewer", "manager", "admin"] },
   { href: "/usage", label: "Usage" },
 ];
 
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn, signOut } = useAuthActions();
   const me = useQuery(api.users.me);
@@ -28,6 +31,8 @@ export default function NavBar() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetTokenVisible, setResetTokenVisible] = useState(false);
+  const [copyTokenFeedback, setCopyTokenFeedback] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [firstLoginPassword, setFirstLoginPassword] = useState("");
   const [firstLoginConfirm, setFirstLoginConfirm] = useState("");
@@ -37,10 +42,13 @@ export default function NavBar() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      document.cookie = "__session_hint=1;path=/;max-age=31536000;SameSite=Lax";
       void upsertSelf({});
       setShowAuthModal(false);
+    } else if (!isLoading) {
+      document.cookie = "__session_hint=;path=/;max-age=0";
     }
-  }, [isAuthenticated, upsertSelf]);
+  }, [isAuthenticated, isLoading, upsertSelf]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -51,6 +59,26 @@ export default function NavBar() {
     if (showAuthModal) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showAuthModal]);
+
+  async function handleSignOut() {
+    document.cookie = "__session_hint=;path=/;max-age=0";
+    setAuthFlow("signIn");
+    setAuthError(null);
+    setAuthMessage(null);
+    setResetToken(null);
+    setResetTokenVisible(false);
+    setCopyTokenFeedback(null);
+    setFirstLoginPassword("");
+    setFirstLoginConfirm("");
+    setFirstLoginError(null);
+    try {
+      await signOut();
+    } catch {
+      // still redirect to sign-in landing
+    }
+    router.replace("/?signin=1");
+    setShowAuthModal(true);
+  }
 
   async function handleAuthSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -65,17 +93,23 @@ export default function NavBar() {
       } else if (authFlow === "resetRequest") {
         const email = String(formData.get("email") ?? "");
         const result = await requestPasswordReset({ email });
-        setResetToken(result.resetToken ?? null);
-        setAuthMessage(
-          result.resetToken
-            ? `Reset token generated: ${result.resetToken}`
-            : "If the email exists, a reset token has been issued."
-        );
-        setAuthFlow("resetVerify");
+        if (result.resetToken) {
+          setResetToken(result.resetToken);
+          setResetTokenVisible(false);
+          setAuthMessage(null);
+          setAuthFlow("resetVerify");
+        } else {
+          setResetToken(null);
+          setAuthMessage(
+            "No active account was found for this email. Check the address or contact an administrator."
+          );
+        }
       } else {
         const token = String(formData.get("token") ?? "");
         const newPassword = String(formData.get("newPassword") ?? "");
         await resetPasswordWithToken({ token, newPassword });
+        setResetToken(null);
+        setResetTokenVisible(false);
         setAuthMessage("Password updated. Sign in with your new password.");
         setAuthFlow("signIn");
       }
@@ -115,10 +149,10 @@ export default function NavBar() {
     }
   }
 
-  const visibleLinks =
-    me?.role === "admin"
-      ? [...NAV_LINKS, { href: "/users", label: "Users" }]
-      : NAV_LINKS;
+  const visibleLinks = [
+    ...NAV_LINKS.filter((link) => !link.roles || (me?.role && link.roles.includes(me.role))),
+    ...(me?.role === "admin" ? [{ href: "/users", label: "Users" }] : []),
+  ];
 
   return (
     <>
@@ -164,6 +198,9 @@ export default function NavBar() {
                   setAuthFlow("signIn");
                   setAuthError(null);
                   setAuthMessage(null);
+                  setResetToken(null);
+                  setResetTokenVisible(false);
+                  setCopyTokenFeedback(null);
                 }}
                 className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100"
               >
@@ -171,7 +208,7 @@ export default function NavBar() {
               </button>
             ) : !isLoading ? (
               <button
-                onClick={() => void signOut()}
+                onClick={() => void handleSignOut()}
                 className="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100"
               >
                 Sign Out
@@ -192,13 +229,54 @@ export default function NavBar() {
                 : "Set New Password"}
             </h2>
             <form onSubmit={handleAuthSubmit} className="space-y-3">
-              <input
-                name="email"
-                type="email"
-                placeholder="Email"
-                required
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
-              />
+              {(authFlow === "signIn" || authFlow === "resetRequest") && (
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="Email"
+                  required
+                  className="w-full px-3 py-2 text-sm border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
+                />
+              )}
+              {authFlow === "resetVerify" && resetToken && (
+                <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-2">
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Copy your reset token below. It expires in 15 minutes. Use Show only on a private screen.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      readOnly
+                      type={resetTokenVisible ? "text" : "password"}
+                      value={resetToken}
+                      aria-label="Reset token"
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs font-mono border border-stone-200 rounded-md bg-white text-stone-800"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setResetTokenVisible((v) => !v)}
+                      className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100"
+                    >
+                      {resetTokenVisible ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(resetToken);
+                          setCopyTokenFeedback("Copied");
+                          setTimeout(() => setCopyTokenFeedback(null), 2000);
+                        } catch {
+                          setCopyTokenFeedback("Copy failed");
+                          setTimeout(() => setCopyTokenFeedback(null), 2000);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100"
+                    >
+                      {copyTokenFeedback ?? "Copy"}
+                    </button>
+                  </div>
+                </div>
+              )}
               {authFlow === "signIn" && (
                 <input
                   name="password"
@@ -214,9 +292,10 @@ export default function NavBar() {
                   <input
                     name="token"
                     type="text"
-                    placeholder="Reset token"
+                    placeholder="Paste reset token (or use the value above)"
                     required
-                    defaultValue={resetToken ?? ""}
+                    value={resetToken ?? ""}
+                    onChange={(e) => setResetToken(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-stone-400"
                   />
                   <input
@@ -257,6 +336,8 @@ export default function NavBar() {
                     setAuthFlow("signIn");
                     setAuthError(null);
                     setAuthMessage(null);
+                    setResetToken(null);
+                    setResetTokenVisible(false);
                   }}
                   className="w-full text-center text-xs text-stone-500 hover:text-stone-700"
                 >
@@ -270,6 +351,8 @@ export default function NavBar() {
                     setAuthFlow("resetRequest");
                     setAuthError(null);
                     setAuthMessage(null);
+                    setResetToken(null);
+                    setResetTokenVisible(false);
                   }}
                   className="w-full text-center text-xs text-stone-500 hover:text-stone-700"
                 >
