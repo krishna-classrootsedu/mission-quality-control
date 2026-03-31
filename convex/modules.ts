@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 import { ROLES, canAccessModule, getModulesForUser, requireAnyRole, requireCurrentUser } from "./lib/authz";
@@ -505,6 +505,123 @@ export const finalizeReview = internalMutation({
     });
 
     return { action: "finalized", overallScore, overallPercentage, scoreBand };
+  },
+});
+
+// Finalize corrections review — recalculate score from fixStatus verdicts
+// Called from frontend when Vinay completes review of corrections-checker results.
+// Also callable from HTTP route for Orchestrator.
+async function finalizeCorrectionsReviewImpl(
+  ctx: Pick<MutationCtx, "db">,
+  moduleId: string,
+  version: number
+) {
+  const module = await ctx.db
+    .query("modules")
+    .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+    .order("desc")
+    .first();
+  if (!module) throw new Error(`Module not found: ${moduleId}`);
+  if (module.deleted) throw new Error("Module has been deleted");
+  if (module.version !== version) {
+    throw new Error(`Version mismatch: expected ${version}, found ${module.version}`);
+  }
+  if (module.status !== "corrections_review_complete") {
+    throw new Error(`Module must be in corrections_review_complete status, got: ${module.status}`);
+  }
+
+  // Get corrections-check recs for this version
+  const allRecs = await ctx.db
+    .query("recommendations")
+    .withIndex("by_moduleId_version", (q) =>
+      q.eq("moduleId", moduleId).eq("version", version)
+    )
+    .collect();
+
+  const correctionsRecs = allRecs.filter((r) => r.sourcePass === "corrections_check");
+  const pending = correctionsRecs.filter((r) => r.reviewStatus === "pending");
+  if (pending.length > 0) {
+    throw new Error(`${pending.length} corrections verdicts still pending. Review all before completing.`);
+  }
+
+  // Get previous version's score as baseline
+  const prevVersion = version - 1;
+  const prevModules = await ctx.db
+    .query("modules")
+    .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+    .collect();
+  const prevModule = prevModules.find((m) => m.version === prevVersion && !m.deleted);
+  const baseScore = prevModule?.overallScore ?? 0;
+
+  // Calculate recovered points from accepted verdicts
+  const accepted = correctionsRecs.filter((r) => r.reviewStatus === "accepted");
+  let recoveredPoints = 0;
+  let fixedCount = 0;
+  let partialCount = 0;
+  let notFixedCount = 0;
+
+  for (const rec of accepted) {
+    const pts = rec.pointsRecoverable ?? 0;
+    if (rec.fixStatus === "fixed") {
+      recoveredPoints += pts;
+      fixedCount++;
+    } else if (rec.fixStatus === "partially_fixed") {
+      recoveredPoints += pts * 0.5;
+      partialCount++;
+    } else {
+      notFixedCount++;
+    }
+  }
+
+  const newScore = Math.min(Math.round(baseScore + recoveredPoints), 100);
+
+  let scoreBand: string;
+  if (newScore >= 90) scoreBand = "Ship-ready";
+  else if (newScore >= 75) scoreBand = "Upgradeable";
+  else if (newScore >= 50) scoreBand = "Rework";
+  else scoreBand = "Redesign";
+
+  const now = new Date().toISOString();
+  await ctx.db.patch(module._id, {
+    status: "vinay_reviewed",
+    overallScore: newScore,
+    overallPercentage: newScore,
+    scoreBand,
+    updatedAt: now,
+  });
+
+  return {
+    previousScore: baseScore,
+    recoveredPoints: Math.round(recoveredPoints * 10) / 10,
+    newScore,
+    scoreBand,
+    fixedCount,
+    partialCount,
+    notFixedCount,
+    totalVerdicts: correctionsRecs.length,
+  };
+}
+
+export const finalizeCorrectionsReview = mutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+  },
+  handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+    await requireAnyRole(ctx, [ROLES.LEAD_REVIEWER, ROLES.MANAGER, ROLES.ADMIN]);
+    return await finalizeCorrectionsReviewImpl(ctx, moduleId, version);
+  },
+});
+
+export const internalFinalizeCorrectionsReview = internalMutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+  },
+  handler: async (ctx, { moduleId, version }) => {
+    return await finalizeCorrectionsReviewImpl(ctx, moduleId, version);
   },
 });
 

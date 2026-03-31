@@ -55,8 +55,17 @@ export default function ModuleDetailPage() {
     moduleData ? { moduleId, version: moduleData.version } : "skip"
   );
 
+  const isCorrectionsVersion = moduleData?.status === "corrections_review_complete" || moduleData?.status === "corrections_intake_complete";
+  const unexpectedChanges = useQuery(
+    api.correctionsDiff.unexpectedChanges,
+    moduleData && isCorrectionsVersion && moduleData.version > 1
+      ? { moduleId, version: moduleData.version }
+      : "skip"
+  );
+
   const reviewMutation = useMutation(api.recommendations.review);
   const completeMutation = useMutation(api.recommendations.completeVinayReview);
+  const finalizeCorrections = useMutation(api.modules.finalizeCorrectionsReview);
 
   const tabs = useMemo(() => {
     const baseTabs = [
@@ -137,8 +146,19 @@ export default function ModuleDetailPage() {
     }
     if (!moduleData) return;
     try {
-      const result = await completeMutation({ moduleId, version: moduleData.version });
-      alert(`Review complete! ${result.accepted} accepted, ${result.rejected} rejected.`);
+      if (moduleData.status === "corrections_review_complete") {
+        const result = await finalizeCorrections({ moduleId, version: moduleData.version });
+        alert(
+          `Corrections review complete!\n` +
+          `Previous score: ${result.previousScore}/100\n` +
+          `Recovered: +${result.recoveredPoints} pts\n` +
+          `New score: ${result.newScore}/100 (${result.scoreBand})\n` +
+          `Fixed: ${result.fixedCount} | Partial: ${result.partialCount} | Not fixed: ${result.notFixedCount}`
+        );
+      } else {
+        const result = await completeMutation({ moduleId, version: moduleData.version });
+        alert(`Review complete! ${result.accepted} accepted, ${result.rejected} rejected.`);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Complete failed");
     }
@@ -273,6 +293,21 @@ export default function ModuleDetailPage() {
         </div>
       </div>
 
+      {/* Unexpected changes warning */}
+      {unexpectedChanges?.hasUnexpectedChanges && (
+        <div className="bg-amber-50 border-b border-amber-200/60 px-6 py-2.5 flex-shrink-0">
+          <div className="max-w-[1400px] mx-auto flex items-start gap-2.5">
+            <span className="text-amber-600 text-sm mt-0.5 shrink-0">!</span>
+            <div>
+              <span className="text-[12px] font-semibold text-amber-700">Unexpected changes detected</span>
+              <p className="text-[12px] text-amber-600 mt-0.5 leading-relaxed">
+                {unexpectedChanges.summary} Consider a full re-review if these changes are significant.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content with crossfade */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-[1400px] mx-auto px-6 py-4 pb-16">
@@ -373,7 +408,9 @@ export default function ModuleDetailPage() {
                   onClick={handleComplete}
                   className="px-4 py-2 bg-stone-800 text-white rounded-lg text-sm font-medium hover:bg-stone-900 transition-all"
                 >
-                  Complete Review
+                  {moduleData?.status === "corrections_review_complete"
+                    ? "Complete Corrections Review"
+                    : "Complete Review"}
                 </button>
               )}
             </div>
