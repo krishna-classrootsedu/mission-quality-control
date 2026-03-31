@@ -419,6 +419,42 @@ http.route({
   }),
 });
 
+// Finalize corrections review — recalculate score from fixStatus verdicts
+http.route({
+  path: "/update/finalize-corrections-review",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(internal.modules.internalFinalizeCorrectionsReview, body);
+      return jsonResponse({ success: true, ...result });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
+// Corrections diff — structural slide mapping + targeted recs (for corrections-checker agent)
+http.route({
+  path: "/query/corrections-diff",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const url = new URL(request.url);
+      const moduleId = url.searchParams.get("moduleId");
+      const versionParam = url.searchParams.get("version");
+      if (!moduleId || !versionParam) return jsonResponse({ error: "Missing moduleId or version" }, 400);
+      const version = parseInt(versionParam, 10);
+      const diff = await ctx.runQuery(internal.correctionsDiff.correctionsDiff, { moduleId, version });
+      return jsonResponse(diff);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
 // Accepted feedback from a specific version (for corrections flow — Orchestrator calls this)
 http.route({
   path: "/query/accepted-feedback",
@@ -457,9 +493,11 @@ const allPaths = [
   "/update/module-status", "/update/recommendation-review",
   "/update/complete-recommendation-review", "/update/flow-map-flag",
   "/update/slide-thumbnail", "/update/finalize-review",
+  "/update/finalize-corrections-review",
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
   "/query/review-scores", "/query/recommendations", "/query/flow-map",
   "/query/pipeline-summary", "/query/activity", "/query/accepted-feedback",
+  "/query/corrections-diff",
 ];
 
 for (const path of allPaths) {
