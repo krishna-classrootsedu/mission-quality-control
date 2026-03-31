@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -83,6 +83,14 @@ export default function UploadPage() {
   const [autoDetected, setAutoDetected] = useState(false);
 
   const isCorrections = mode === "corrections";
+
+  useEffect(() => {
+    if (mode !== "new") return;
+    if (submittedBy.trim().length > 0) return;
+    if (me?.name && me.name.trim().length > 0) {
+      setSubmittedBy(me.name.trim());
+    }
+  }, [me?.name, mode, submittedBy]);
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
