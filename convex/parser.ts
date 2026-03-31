@@ -1,5 +1,6 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 // Parse a PPTX file via the VPS microservice.
 // Frontend uploads file to Convex storage first, then calls this action.
@@ -7,6 +8,8 @@ import { v } from "convex/values";
 export const parsePptx = action({
   args: { storageId: v.id("_storage") },
   handler: async (ctx, { storageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized: sign in required");
     const parserUrl = process.env.PARSER_URL;
     const parserApiKey = process.env.PARSER_API_KEY;
     if (!parserUrl || !parserApiKey) {

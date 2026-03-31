@@ -1,5 +1,14 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
+import { ROLES, requireAnyRole } from "./lib/authz";
+
+const DEFAULT_DAILY_AGGREGATE_LIMIT = 250;
+const MAX_DAILY_AGGREGATE_LIMIT = 500;
+
+function normalizeLimit(limit?: number) {
+  const safe = limit ?? DEFAULT_DAILY_AGGREGATE_LIMIT;
+  return Math.max(1, Math.min(MAX_DAILY_AGGREGATE_LIMIT, Math.floor(safe)));
+}
 
 // Push a single token usage record (called by Orchestrator via HTTP)
 export const push = internalMutation({
@@ -74,10 +83,10 @@ export const pushBatch = internalMutation({
   },
 });
 
-// All token records for a module
 export const byModule = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN], { allowFirstLogin: true });
     return await ctx.db
       .query("tokenUsage")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -85,15 +94,16 @@ export const byModule = query({
   },
 });
 
-// Daily aggregates for the Usage tab
 export const dailyAggregate = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN], { allowFirstLogin: true });
+    const pageLimit = normalizeLimit(limit);
     const all = await ctx.db
       .query("tokenUsage")
       .withIndex("by_timestamp")
       .order("desc")
-      .take(limit ?? 500);
+      .take(pageLimit);
 
     // Group by date + agent
     const groups = new Map<string, {

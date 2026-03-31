@@ -1,4 +1,5 @@
 import { query } from "./_generated/server";
+import { getModulesForUser } from "./lib/authz";
 
 // Board column names
 type BoardColumn =
@@ -70,12 +71,7 @@ function statusToColumn(status: string): BoardColumn {
 export const getBoard = query({
   args: {},
   handler: async (ctx): Promise<ModuleBoardItem[]> => {
-    const allModules = await ctx.db
-      .query("modules")
-      .withIndex("by_updatedAt")
-      .order("desc")
-      .take(200);
-    const modules = allModules.filter((m) => !m.deleted);
+    const { modules } = await getModulesForUser(ctx);
 
     // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules
@@ -83,21 +79,17 @@ export const getBoard = query({
       .map((m) => ({ moduleId: m.moduleId, version: m.version }));
 
     const recCountsMap = new Map<string, { total: number; pending: number; accepted: number; rejected: number }>();
-
-    for (const { moduleId, version } of vinayModuleIds) {
-      const recs = await ctx.db
-        .query("recommendations")
-        .withIndex("by_moduleId_version", (q) =>
-          q.eq("moduleId", moduleId).eq("version", version)
-        )
-        .collect();
-
-      recCountsMap.set(`${moduleId}-v${version}`, {
-        total: recs.length,
-        pending: recs.filter((r) => r.reviewStatus === "pending").length,
-        accepted: recs.filter((r) => r.reviewStatus === "accepted").length,
-        rejected: recs.filter((r) => r.reviewStatus === "rejected").length,
-      });
+    const vinayKeySet = new Set(vinayModuleIds.map(({ moduleId, version }) => `${moduleId}-v${version}`));
+    const allVinayRecs = await ctx.db.query("recommendations").collect();
+    for (const r of allVinayRecs) {
+      const key = `${r.moduleId}-v${r.version}`;
+      if (!vinayKeySet.has(key)) continue;
+      const existing = recCountsMap.get(key) ?? { total: 0, pending: 0, accepted: 0, rejected: 0 };
+      existing.total += 1;
+      if (r.reviewStatus === "pending") existing.pending += 1;
+      if (r.reviewStatus === "accepted") existing.accepted += 1;
+      if (r.reviewStatus === "rejected") existing.rejected += 1;
+      recCountsMap.set(key, existing);
     }
 
     return modules.map((m) => ({

@@ -39,10 +39,12 @@ export default function InlineRecommendation({
   recommendation: r,
   decision,
   onDecisionChange,
+  readOnly = false,
 }: {
   recommendation: Recommendation;
   decision?: Decision;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -142,7 +144,7 @@ export default function InlineRecommendation({
       </AnimatePresence>
 
       {/* Accept/Reject row — icon buttons instead of dropdown */}
-      {isPending && (
+      {isPending && !readOnly && (
         <div className="px-3 py-2 border-t border-stone-100 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1">
             <button

@@ -19,13 +19,17 @@
 # misc
 .DS_Store
 *.pem
+_jwt_private_key.txt
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+.cursor/
+
 # local env files
+.env
 .env*.local
 
 # vercel

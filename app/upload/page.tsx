@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -52,6 +52,7 @@ type CorrectableModule = {
 export default function UploadPage() {
   const router = useRouter();
   const spineFileRef = useRef<HTMLInputElement>(null);
+  const me = useQuery(api.users.me);
 
   const submitWithFlow = useMutation(api.modules.submitModuleWithFlow);
   const submitCorrections = useMutation(api.modules.submitCorrections);
@@ -63,7 +64,7 @@ export default function UploadPage() {
   const [selectedModule, setSelectedModule] = useState<CorrectableModule | null>(null);
   const [corrGrade, setCorrGrade] = useState<number | "">("");
   const [corrChapter, setCorrChapter] = useState<number | "">("");
-  const correctableModules = useQuery(api.modules.correctableModules);
+  const correctableModules = useQuery(api.modules.correctableModules, me ? {} : "skip");
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
@@ -82,6 +83,14 @@ export default function UploadPage() {
   const [autoDetected, setAutoDetected] = useState(false);
 
   const isCorrections = mode === "corrections";
+
+  useEffect(() => {
+    if (mode !== "new") return;
+    if (submittedBy.trim().length > 0) return;
+    if (me?.name && me.name.trim().length > 0) {
+      setSubmittedBy(me.name.trim());
+    }
+  }, [me?.name, mode, submittedBy]);
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
@@ -253,6 +262,39 @@ export default function UploadPage() {
   }
 
   const stepLabels = ["Upload Spine", "Applet Storyboards", "Review & Submit"];
+
+  if (me === undefined) {
+    return (
+      <main className="max-w-2xl mx-auto px-6 py-5">
+        <p className="text-sm text-stone-400">Loading...</p>
+      </main>
+    );
+  }
+  if (me === null) {
+    return (
+      <main className="max-w-2xl mx-auto px-6 py-5">
+        <div className="bg-white rounded-lg border border-stone-200 p-6">
+          <h1 className="text-lg font-semibold text-stone-800">Sign in required</h1>
+          <p className="text-sm text-stone-500 mt-2">Please sign in to upload modules.</p>
+        </div>
+      </main>
+    );
+  }
+  const canUpload =
+    me.role === "content_creator" ||
+    me.role === "lead_reviewer" ||
+    me.role === "manager" ||
+    me.role === "admin";
+  if (!canUpload) {
+    return (
+      <main className="max-w-2xl mx-auto px-6 py-5">
+        <div className="bg-white rounded-lg border border-stone-200 p-6">
+          <h1 className="text-lg font-semibold text-stone-800">Permission denied</h1>
+          <p className="text-sm text-stone-500 mt-2">Your role does not have upload access.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-2xl mx-auto px-6 py-5">

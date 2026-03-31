@@ -1,6 +1,7 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { ROLES, canAccessModule, getModulesForUser, requireAnyRole, requireCurrentUser } from "./lib/authz";
 
 // Valid pipeline statuses
 const VALID_STATUSES = [
@@ -20,6 +21,14 @@ const VALID_STATUSES = [
   "corrections_intake_complete",
   "corrections_review_complete",
 ] as const;
+
+const DEFAULT_MODULE_PAGE_LIMIT = 50;
+const MAX_MODULE_PAGE_LIMIT = 200;
+
+function normalizePageLimit(limit?: number) {
+  const safe = limit ?? DEFAULT_MODULE_PAGE_LIMIT;
+  return Math.max(1, Math.min(MAX_MODULE_PAGE_LIMIT, Math.floor(safe)));
+}
 
 // Upsert a module — new submission or re-submission
 export const upsert = internalMutation({
@@ -155,14 +164,34 @@ export const updateStatus = internalMutation({
 export const list = query({
   args: { status: v.optional(v.string()) },
   handler: async (ctx, { status }) => {
+    const { modules } = await getModulesForUser(ctx);
     if (status) {
-      return await ctx.db
-        .query("modules")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .order("desc")
-        .take(200);
+      return modules.filter((m) => m.status === status);
     }
-    return await ctx.db.query("modules").order("desc").take(200);
+    return modules;
+  },
+});
+
+// Paginated module list for large datasets (keeps `list` backward-compatible).
+export const listPaginated = query({
+  args: {
+    status: v.optional(v.string()),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, cursor, limit }) => {
+    const { modules } = await getModulesForUser(ctx);
+    const filtered = status ? modules.filter((m) => m.status === status) : modules;
+    const pageLimit = normalizePageLimit(limit);
+    const start = cursor ?? 0;
+    const page = filtered.slice(start, start + pageLimit);
+    const continueCursor = start + page.length;
+    const isDone = continueCursor >= filtered.length;
+    return {
+      page,
+      isDone,
+      continueCursor: isDone ? null : continueCursor,
+    };
   },
 });
 
@@ -170,6 +199,8 @@ export const list = query({
 export const detail = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     if (version !== undefined) {
       // Fetch specific version
       const all = await ctx.db
@@ -194,6 +225,12 @@ export const detail = query({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -216,20 +253,23 @@ export const submitModule = mutation({
     fileName: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
-    // Generate moduleId from title (slug-style)
     const slug = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 40);
-    const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
+    const moduleId = `MOD-${slug}-${crypto.randomUUID()}`;
 
-    // Get the file URL from storage
     const pptxFileUrl = await ctx.storage.getUrl(args.pptxStorageId);
 
-    // Check for existing module with same title (loose dedup)
     const existing = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -249,6 +289,7 @@ export const submitModule = mutation({
       status: "submitted",
       version: 1,
       submittedBy: args.submittedBy,
+      submittedByUserId: user._id,
       submittedAt: now,
       updatedAt: now,
     });
@@ -302,20 +343,23 @@ export const submitModuleWithFlow = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    const user = await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
-    // Generate moduleId from title
     const slug = args.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 40);
-    const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
+    const moduleId = `MOD-${slug}-${crypto.randomUUID()}`;
 
-    // Compute totalApplets from sourceFiles
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
 
-    // Create module record
     const totalSlides = args.slides.length;
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId,
@@ -337,6 +381,7 @@ export const submitModuleWithFlow = mutation({
       completedAppletReviews: 0,
       spineComplete: false,
       submittedBy: args.submittedBy,
+      submittedByUserId: user._id,
       submittedAt: now,
       updatedAt: now,
     });
@@ -467,9 +512,17 @@ export const finalizeReview = internalMutation({
 export const correctableModules = query({
   args: {},
   handler: async (ctx) => {
+    const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
     const all = await ctx.db.query("modules").order("desc").take(200);
     return all
-      .filter((m) => !m.deleted && ["vinay_reviewed", "creator_fixing"].includes(m.status))
+      .filter((m) => {
+        if (m.deleted) return false;
+        if (!["vinay_reviewed", "creator_fixing"].includes(m.status)) return false;
+        if (user.role === ROLES.CONTENT_CREATOR) {
+          return m.submittedByUserId === user._id;
+        }
+        return true;
+      })
       .map((m) => ({
         _id: m._id,
         moduleId: m.moduleId,
@@ -491,6 +544,8 @@ export const correctableModules = query({
 export const allVersions = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     const versions = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -529,9 +584,14 @@ export const submitCorrections = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    const user = await requireAnyRole(ctx, [
+      ROLES.CONTENT_CREATOR,
+      ROLES.LEAD_REVIEWER,
+      ROLES.MANAGER,
+      ROLES.ADMIN,
+    ]);
     const now = new Date().toISOString();
 
-    // Find existing module (latest version)
     const existing = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
@@ -544,11 +604,14 @@ export const submitCorrections = mutation({
       throw new Error(`Module must be in vinay_reviewed or creator_fixing status, got: ${existing.status}`);
     }
 
+    if (user.role === ROLES.CONTENT_CREATOR && existing.submittedByUserId !== user._id) {
+      throw new Error("Forbidden: you can only submit corrections for your own modules");
+    }
+
     const newVersion = existing.version + 1;
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
     const totalSlides = args.slides.length;
 
-    // Create new version — copy metadata from existing, new files + corrections status
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId: args.moduleId,
       title: existing.title,
@@ -569,6 +632,7 @@ export const submitCorrections = mutation({
       completedAppletReviews: 0,
       spineComplete: false,
       submittedBy: existing.submittedBy,
+      submittedByUserId: existing.submittedByUserId,
       submittedAt: now,
       updatedAt: now,
     });
@@ -620,6 +684,87 @@ export const submitCorrections = mutation({
 
 // Pipeline summary — count modules per status
 export const pipelineSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const { modules } = await getModulesForUser(ctx);
+    const counts: Record<string, number> = {};
+    for (const m of modules) {
+      counts[m.status] = (counts[m.status] || 0) + 1;
+    }
+    return { total: modules.length, byStatus: counts };
+  },
+});
+
+// --- Internal variants for HTTP agent routes (API-key gated, no user session) ---
+
+export const internalList = internalQuery({
+  args: {
+    status: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, limit }) => {
+    const pageLimit = normalizePageLimit(limit);
+    if (status) {
+      return await ctx.db
+        .query("modules")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .order("desc")
+        .take(pageLimit);
+    }
+    return await ctx.db.query("modules").order("desc").take(pageLimit);
+  },
+});
+
+// Internal paginated list for agent routes processing larger queues.
+export const internalListPaginated = internalQuery({
+  args: {
+    status: v.optional(v.string()),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, cursor, limit }) => {
+    const pageLimit = normalizePageLimit(limit);
+    const start = cursor ?? 0;
+    const source = status
+      ? await ctx.db
+          .query("modules")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .order("desc")
+          .collect()
+      : await ctx.db.query("modules").order("desc").collect();
+    const page = source.slice(start, start + pageLimit);
+    const continueCursor = start + page.length;
+    const isDone = continueCursor >= source.length;
+    return {
+      page,
+      isDone,
+      continueCursor: isDone ? null : continueCursor,
+    };
+  },
+});
+
+export const internalDetail = internalQuery({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    if (version !== undefined) {
+      const all = await ctx.db
+        .query("modules")
+        .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+        .collect();
+      const match = all.find((m) => m.version === version && !m.deleted);
+      return match ?? null;
+    }
+    const module = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .order("desc")
+      .first();
+    if (module?.deleted) return null;
+    return module;
+  },
+});
+
+export const internalPipelineSummary = internalQuery({
   args: {},
   handler: async (ctx) => {
     const all = await ctx.db.query("modules").collect();

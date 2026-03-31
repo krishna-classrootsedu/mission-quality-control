@@ -23,9 +23,17 @@ export default function ModuleDetailPage() {
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const me = useQuery(api.users.me);
 
-  const allVersions = useQuery(api.modules.allVersions, { moduleId });
-  const moduleData = useQuery(api.modules.detail, selectedVersion != null ? { moduleId, version: selectedVersion } : { moduleId });
+  const allVersions = useQuery(api.modules.allVersions, me ? { moduleId } : "skip");
+  const moduleData = useQuery(
+    api.modules.detail,
+    me
+      ? selectedVersion != null
+        ? { moduleId, version: selectedVersion }
+        : { moduleId }
+      : "skip"
+  );
   const reviewScores = useQuery(
     api.reviewScores.byModule,
     moduleData ? { moduleId, version: moduleData.version } : "skip"
@@ -96,6 +104,11 @@ export default function ModuleDetailPage() {
   );
 
   const handleSave = async () => {
+    const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+    if (!canReview) {
+      alert("Permission denied");
+      return;
+    }
     setSaving(true);
     try {
       const saved = new Map(decisions);
@@ -117,6 +130,11 @@ export default function ModuleDetailPage() {
   };
 
   const handleComplete = async () => {
+    const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+    if (!canReview) {
+      alert("Permission denied");
+      return;
+    }
     if (!moduleData) return;
     try {
       const result = await completeMutation({ moduleId, version: moduleData.version });
@@ -140,7 +158,7 @@ export default function ModuleDetailPage() {
     return badges;
   }, [recommendations]);
 
-  if (moduleData === undefined) {
+  if (me === undefined || moduleData === undefined) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="space-y-3">
@@ -160,6 +178,15 @@ export default function ModuleDetailPage() {
     );
   }
 
+  if (me === null) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-stone-500">Sign in required to view this module.</div>
+      </div>
+    );
+  }
+
+  const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
   const recCount = recommendations?.length ?? 0;
   const pendingCount = recommendations?.filter((r) => r.reviewStatus === "pending").length ?? 0;
   const saveableCount = Array.from(decisions.values()).filter((d) => d.status !== "pending").length;
@@ -205,17 +232,19 @@ export default function ModuleDetailPage() {
                 )}
               </div>
             </div>
-            {moduleData.overallPercentage != null && (
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="font-display text-4xl text-stone-900 leading-none">
-                    {moduleData.overallPercentage}<span className="text-3xl">%</span>
+            <div className="flex items-center gap-3">
+              {moduleData.overallPercentage != null && (
+                <>
+                  <div className="text-right">
+                    <div className="font-display text-4xl text-stone-900 leading-none">
+                      {moduleData.overallPercentage}<span className="text-3xl">%</span>
+                    </div>
+                    <div className="text-[11px] text-stone-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
                   </div>
-                  <div className="text-[11px] text-stone-400 font-mono mt-0.5">{moduleData.overallScore}/100</div>
-                </div>
-                <ScoreBandBadge band={moduleData.scoreBand ?? null} />
-              </div>
-            )}
+                  <ScoreBandBadge band={moduleData.scoreBand ?? null} />
+                </>
+              )}
+            </div>
           </div>
 
           {/* Tabs */}
@@ -270,6 +299,7 @@ export default function ModuleDetailPage() {
                 sourceFiles={moduleData.sourceFiles}
                 slides={slidesWithUrls ?? []}
                 recommendations={recommendations ?? []}
+                readOnly={!canReview}
               />
             ) : activeTab === "global" ? (
               <GlobalContent
@@ -278,6 +308,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : activeTab === "spine" ? (
               <SpineTabContent
@@ -287,6 +318,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : activeTab.startsWith("applet_") ? (
               <AppletTabContent
@@ -298,6 +330,7 @@ export default function ModuleDetailPage() {
                 recommendations={recommendations ?? []}
                 decisions={decisions}
                 onDecisionChange={handleDecisionChange}
+                readOnly={!canReview}
               />
             ) : null}
           </motion.div>
@@ -305,8 +338,8 @@ export default function ModuleDetailPage() {
         </div>
       </main>
 
-      {/* Sticky save bar */}
-      {recCount > 0 && activeTab !== "overview" && (
+      {/* Sticky save bar — reviewers only */}
+      {canReview && recCount > 0 && activeTab !== "overview" && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-stone-200/60 shadow-bar px-6 py-3.5 z-20">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="text-xs text-stone-500 flex items-center gap-3">
@@ -671,12 +704,14 @@ function CustomTabContent({
   sourceFiles,
   slides,
   recommendations,
+  readOnly = false,
 }: {
   moduleId: string;
   version: number;
   sourceFiles?: { type: string; label: string }[];
   slides: { slideNumber: number; sourceFile?: string }[];
   recommendations: CustomRecommendation[];
+  readOnly?: boolean;
 }) {
   const addCustomReview = useMutation(api.recommendations.addCustomReview);
   const customRecs = recommendations.filter((r) => r.source === "reviewer");
@@ -708,11 +743,13 @@ function CustomTabContent({
 
   return (
     <div className="space-y-3">
-      <CustomReviewForm
-        sourceFiles={sourceFiles}
-        slides={slides}
-        onSubmit={handleSubmit}
-      />
+      {!readOnly && (
+        <CustomReviewForm
+          sourceFiles={sourceFiles}
+          slides={slides}
+          onSubmit={handleSubmit}
+        />
+      )}
 
       {customRecs.length > 0 ? (
         <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
@@ -785,6 +822,7 @@ function GlobalContent({
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   moduleData: {
     overallScore?: number;
@@ -795,6 +833,7 @@ function GlobalContent({
   recommendations: Recommendation[];
   decisions: Map<string, { status: string; comment: string }>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const globalRecs = recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer");
   const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
@@ -823,6 +862,7 @@ function GlobalContent({
                   recommendation={r}
                   decision={decisions.get(r._id)}
                   onDecisionChange={onDecisionChange}
+                  readOnly={readOnly}
                 />
               ))}
           </div>

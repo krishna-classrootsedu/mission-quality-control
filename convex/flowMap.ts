@@ -1,6 +1,7 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { ROLES, canAccessModule, canReviewModule, requireAnyRole } from "./lib/authz";
 
 // Batch-insert flow map rows (called by Flow Mapper agent)
 export const push = internalMutation({
@@ -85,6 +86,11 @@ export const flag = mutation({
     vinayFlag: v.string(),
   },
   handler: async (ctx, { stepId, vinayFlag }) => {
+    await requireAnyRole(ctx, [ROLES.LEAD_REVIEWER, ROLES.MANAGER, ROLES.ADMIN]);
+    const step = await ctx.db.get(stepId);
+    if (!step) throw new Error("Flow step not found");
+    const allowed = await canReviewModule(ctx, step.moduleId);
+    if (!allowed) throw new Error("Forbidden: no review access");
     await ctx.db.patch(stepId, {
       status: "flagged",
       vinayFlag,
@@ -97,6 +103,8 @@ export const flag = mutation({
 export const byModule = query({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
     const results = await ctx.db
       .query("flowMap")
       .withIndex("by_moduleId_version", (q) =>
@@ -106,5 +114,38 @@ export const byModule = query({
       )
       .collect();
     return results.sort((a, b) => a.stepIndex - b.stepIndex);
+  },
+});
+
+// --- Internal variants for HTTP agent routes ---
+
+export const internalByModule = internalQuery({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    const results = await ctx.db
+      .query("flowMap")
+      .withIndex("by_moduleId_version", (q) =>
+        version !== undefined
+          ? q.eq("moduleId", moduleId).eq("version", version)
+          : q.eq("moduleId", moduleId)
+      )
+      .collect();
+    return results.sort((a, b) => a.stepIndex - b.stepIndex);
+  },
+});
+
+export const internalFlag = internalMutation({
+  args: {
+    stepId: v.id("flowMap"),
+    vinayFlag: v.string(),
+  },
+  handler: async (ctx, { stepId, vinayFlag }) => {
+    const step = await ctx.db.get(stepId);
+    if (!step) throw new Error("Flow step not found");
+    await ctx.db.patch(stepId, {
+      status: "flagged",
+      vinayFlag,
+      flaggedAt: new Date().toISOString(),
+    });
   },
 });

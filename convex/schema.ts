@@ -1,7 +1,70 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
+  ...authTables,
+
+  // App-specific role profile for Convex Auth users
+  userProfiles: defineTable({
+    userId: v.id("users"),
+    role: v.union(
+      v.literal("content_creator"),
+      v.literal("lead_reviewer"),
+      v.literal("manager"),
+      v.literal("admin")
+    ),
+    isFirstLogin: v.optional(v.boolean()),
+    isActive: v.boolean(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_role", ["role"]),
+
+  passwordResetTokens: defineTable({
+    userId: v.id("users"),
+    tokenHash: v.string(),
+    expiresAt: v.string(),
+    usedAt: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_userId", ["userId"]),
+
+  // Per-module permission overrides on top of base roles
+  modulePermissions: defineTable({
+    moduleId: v.string(),
+    userId: v.id("users"), // Convex Auth users table id
+    permissions: v.array(v.string()),
+    grantSource: v.optional(v.string()),
+    expiresAt: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_moduleId_userId", ["moduleId", "userId"])
+    .index("by_userId", ["userId"]),
+
+  // Audit trail for role/permission changes
+  auditAuthEvents: defineTable({
+    actorUserId: v.optional(v.id("users")),
+    targetUserId: v.optional(v.id("users")),
+    moduleId: v.optional(v.string()),
+    action: v.string(),
+    metadata: v.optional(v.any()),
+    createdAt: v.string(),
+  })
+    .index("by_targetUserId", ["targetUserId"])
+    .index("by_moduleId", ["moduleId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  passwordResetRateLimits: defineTable({
+    key: v.string(),
+    count: v.number(),
+    windowStart: v.string(),
+    updatedAt: v.string(),
+  }).index("by_key", ["key"]),
+
   // One row per module submission
   modules: defineTable({
     moduleId: v.string(),
@@ -41,13 +104,15 @@ export default defineSchema({
     deleted: v.optional(v.boolean()),
     // Metadata
     submittedBy: v.optional(v.string()),
+    submittedByUserId: v.optional(v.id("users")),
     submittedAt: v.string(),
     updatedAt: v.string(),
     completedAt: v.optional(v.string()),
   })
     .index("by_moduleId", ["moduleId"])
     .index("by_status", ["status"])
-    .index("by_updatedAt", ["updatedAt"]),
+    .index("by_updatedAt", ["updatedAt"])
+    .index("by_submittedByUserId", ["submittedByUserId"]),
 
   // Reader output — one per module+version
   intakeResults: defineTable({

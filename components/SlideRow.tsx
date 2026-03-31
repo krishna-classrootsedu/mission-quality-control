@@ -36,11 +36,13 @@ export default function SlideRow({
   recommendations,
   decisions,
   onDecisionChange,
+  readOnly = false,
 }: {
   slide: Slide;
   recommendations: Recommendation[];
   decisions: Map<string, Decision>;
   onDecisionChange: (id: string, status: string, comment: string) => void;
+  readOnly?: boolean;
 }) {
   const sorted = [...recommendations].sort((a, b) => {
     const pa = a.pointsRecoverable ?? 0;
@@ -86,6 +88,7 @@ export default function SlideRow({
                 recommendation={r}
                 decision={decisions.get(r._id)}
                 onDecisionChange={onDecisionChange}
+                readOnly={readOnly}
               />
             ))}
           </div>

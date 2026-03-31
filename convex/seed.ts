@@ -1,10 +1,24 @@
-import { mutation, internalMutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 
 // Clear ALL data from ALL tables + file storage — full reset
 export const clearAll = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const tables = ["modules", "intakeResults", "parsedSlides", "gatekeeperResults", "reviewScores", "recommendations", "flowMap", "agentActivity"] as const;
+    const tables = [
+      "userProfiles",
+      "passwordResetTokens",
+      "modulePermissions",
+      "auditAuthEvents",
+      "modules",
+      "intakeResults",
+      "parsedSlides",
+      "gatekeeperResults",
+      "reviewScores",
+      "recommendations",
+      "flowMap",
+      "agentActivity",
+      "tokenUsage",
+    ] as const;
     const counts: Record<string, number> = {};
     for (const table of tables) {
       const rows = await ctx.db.query(table).collect();
@@ -23,7 +37,7 @@ export const clearAll = internalMutation({
   },
 });
 
-export const seedAll = mutation({
+export const seedAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = new Date().toISOString();

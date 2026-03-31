@@ -1,6 +1,7 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
+import { canAccessModule } from "./lib/authz";
 
 export const push = internalMutation({
   args: {
@@ -108,6 +109,23 @@ export const push = internalMutation({
 
 // Query scores for a module+version
 export const byModule = query({
+  args: { moduleId: v.string(), version: v.optional(v.number()) },
+  handler: async (ctx, { moduleId, version }) => {
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+    const q = ctx.db
+      .query("reviewScores")
+      .withIndex("by_moduleId_version", (q) =>
+        version !== undefined
+          ? q.eq("moduleId", moduleId).eq("version", version)
+          : q.eq("moduleId", moduleId)
+      );
+    return await q.collect();
+  },
+});
+
+// Internal variant for HTTP agent routes
+export const internalByModule = internalQuery({
   args: { moduleId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, { moduleId, version }) => {
     const q = ctx.db
