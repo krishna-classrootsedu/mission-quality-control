@@ -2,6 +2,14 @@ import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireCurrentUser } from "./lib/authz";
 
+const DEFAULT_DAILY_AGGREGATE_LIMIT = 250;
+const MAX_DAILY_AGGREGATE_LIMIT = 500;
+
+function normalizeLimit(limit?: number) {
+  const safe = limit ?? DEFAULT_DAILY_AGGREGATE_LIMIT;
+  return Math.max(1, Math.min(MAX_DAILY_AGGREGATE_LIMIT, Math.floor(safe)));
+}
+
 // Push a single token usage record (called by Orchestrator via HTTP)
 export const push = internalMutation({
   args: {
@@ -90,11 +98,12 @@ export const dailyAggregate = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
     await requireCurrentUser(ctx, { allowFirstLogin: true });
+    const pageLimit = normalizeLimit(limit);
     const all = await ctx.db
       .query("tokenUsage")
       .withIndex("by_timestamp")
       .order("desc")
-      .take(limit ?? 500);
+      .take(pageLimit);
 
     // Group by date + agent
     const groups = new Map<string, {

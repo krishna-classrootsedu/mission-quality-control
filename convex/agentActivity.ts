@@ -2,6 +2,14 @@ import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireCurrentUser } from "./lib/authz";
 
+const DEFAULT_ACTIVITY_LIMIT = 50;
+const MAX_ACTIVITY_LIMIT = 200;
+
+function normalizeLimit(limit?: number) {
+  const safe = limit ?? DEFAULT_ACTIVITY_LIMIT;
+  return Math.max(1, Math.min(MAX_ACTIVITY_LIMIT, Math.floor(safe)));
+}
+
 // Ingest a single activity entry (called by agents via HTTP)
 export const ingest = internalMutation({
   args: {
@@ -40,11 +48,12 @@ export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
     await requireCurrentUser(ctx);
+    const pageLimit = normalizeLimit(limit);
     return await ctx.db
       .query("agentActivity")
       .withIndex("by_timestamp")
       .order("desc")
-      .take(limit ?? 50);
+      .take(pageLimit);
   },
 });
 
@@ -52,10 +61,11 @@ export const recent = query({
 export const internalRecent = internalQuery({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    const pageLimit = normalizeLimit(limit);
     return await ctx.db
       .query("agentActivity")
       .withIndex("by_timestamp")
       .order("desc")
-      .take(limit ?? 50);
+      .take(pageLimit);
   },
 });

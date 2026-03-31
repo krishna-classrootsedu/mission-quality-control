@@ -22,6 +22,14 @@ const VALID_STATUSES = [
   "corrections_review_complete",
 ] as const;
 
+const DEFAULT_MODULE_PAGE_LIMIT = 50;
+const MAX_MODULE_PAGE_LIMIT = 200;
+
+function normalizePageLimit(limit?: number) {
+  const safe = limit ?? DEFAULT_MODULE_PAGE_LIMIT;
+  return Math.max(1, Math.min(MAX_MODULE_PAGE_LIMIT, Math.floor(safe)));
+}
+
 // Upsert a module — new submission or re-submission
 export const upsert = internalMutation({
   args: {
@@ -161,6 +169,29 @@ export const list = query({
       return modules.filter((m) => m.status === status);
     }
     return modules;
+  },
+});
+
+// Paginated module list for large datasets (keeps `list` backward-compatible).
+export const listPaginated = query({
+  args: {
+    status: v.optional(v.string()),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, cursor, limit }) => {
+    const { modules } = await getModulesForUser(ctx);
+    const filtered = status ? modules.filter((m) => m.status === status) : modules;
+    const pageLimit = normalizePageLimit(limit);
+    const start = cursor ?? 0;
+    const page = filtered.slice(start, start + pageLimit);
+    const continueCursor = start + page.length;
+    const isDone = continueCursor >= filtered.length;
+    return {
+      page,
+      isDone,
+      continueCursor: isDone ? null : continueCursor,
+    };
   },
 });
 
@@ -667,16 +698,48 @@ export const pipelineSummary = query({
 // --- Internal variants for HTTP agent routes (API-key gated, no user session) ---
 
 export const internalList = internalQuery({
-  args: { status: v.optional(v.string()) },
-  handler: async (ctx, { status }) => {
+  args: {
+    status: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, limit }) => {
+    const pageLimit = normalizePageLimit(limit);
     if (status) {
       return await ctx.db
         .query("modules")
         .withIndex("by_status", (q) => q.eq("status", status))
         .order("desc")
-        .take(200);
+        .take(pageLimit);
     }
-    return await ctx.db.query("modules").order("desc").take(200);
+    return await ctx.db.query("modules").order("desc").take(pageLimit);
+  },
+});
+
+// Internal paginated list for agent routes processing larger queues.
+export const internalListPaginated = internalQuery({
+  args: {
+    status: v.optional(v.string()),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { status, cursor, limit }) => {
+    const pageLimit = normalizePageLimit(limit);
+    const start = cursor ?? 0;
+    const source = status
+      ? await ctx.db
+          .query("modules")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .order("desc")
+          .collect()
+      : await ctx.db.query("modules").order("desc").collect();
+    const page = source.slice(start, start + pageLimit);
+    const continueCursor = start + page.length;
+    const isDone = continueCursor >= source.length;
+    return {
+      page,
+      isDone,
+      continueCursor: isDone ? null : continueCursor,
+    };
   },
 });
 
