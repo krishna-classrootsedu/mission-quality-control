@@ -52,6 +52,7 @@ export const pushBatch = internalMutation({
         pointsRecoverable: v.optional(v.number()),
         sourcePass: v.string(),
         priority: v.optional(v.number()),
+        fixStatus: v.optional(v.string()),
       })
     ),
     // Denormalized score data to set on module
@@ -92,6 +93,7 @@ export const pushBatch = internalMutation({
         pointsRecoverable: r.pointsRecoverable,
         sourcePass: r.sourcePass,
         priority: r.priority,
+        fixStatus: r.fixStatus,
         reviewStatus: "pending",
         agentName: args.agentName,
         createdAt: now,
