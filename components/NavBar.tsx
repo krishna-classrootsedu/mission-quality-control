@@ -22,6 +22,8 @@ export default function NavBar() {
   const { signIn, signOut } = useAuthActions();
   const me = useQuery(api.users.me);
   const upsertSelf = useMutation(api.users.upsertSelf);
+  const prepareLoginAttempt = useMutation(api.users.prepareLoginAttempt);
+  const recordLoginAttempt = useMutation(api.users.recordLoginAttempt);
   const resetPasswordWithToken = useMutation(api.users.resetPasswordWithToken);
   const changeFirstLoginPassword = useMutation(api.users.changeFirstLoginPassword);
 
@@ -77,22 +79,37 @@ export default function NavBar() {
     setAuthError(null);
     setAuthMessage(null);
     setAuthLoading(true);
+    let submittedEmail = "";
     try {
       const formData = new FormData(e.currentTarget);
+      submittedEmail = String(formData.get("email") ?? "");
       if (authMode === "signIn") {
+        await prepareLoginAttempt({ email: submittedEmail });
         formData.set("flow", "signIn");
         await signIn("password", formData);
+        await recordLoginAttempt({ email: submittedEmail, success: true });
       } else {
-        const email = String(formData.get("email") ?? "");
         const token = String(formData.get("token") ?? "");
         const newPassword = String(formData.get("newPassword") ?? "");
-        await resetPasswordWithToken({ email, token, newPassword });
+        await resetPasswordWithToken({ email: submittedEmail, token, newPassword });
         setAuthMessage("Password updated. Sign in with your new password.");
         setAuthMode("signIn");
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Authentication failed";
-      setAuthError(msg);
+    } catch {
+      if (authMode === "signIn") {
+        if (submittedEmail) {
+          try {
+            await recordLoginAttempt({ email: submittedEmail, success: false });
+          } catch {
+            // Avoid surfacing tracking errors to users.
+          }
+        }
+      }
+      setAuthError(
+        authMode === "signIn"
+          ? "Sign in failed. Please check your email/password and try again."
+          : "Password update failed. Please check your email/token and try again."
+      );
     } finally {
       setAuthLoading(false);
     }

@@ -64,6 +64,8 @@ function getAuthMutationCtx(ctx: MutationCtx): Parameters<typeof createAccount>[
 
 const RESET_WINDOW_MS = 15 * 60 * 1000;
 const RESET_LIMIT_PER_WINDOW = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LIMIT_PER_WINDOW = 10;
 
 async function enforceResetRateLimit(ctx: MutationCtx, email: string, nowIso: string) {
   const key = `password-reset:${email}`;
@@ -97,6 +99,82 @@ async function enforceResetRateLimit(ctx: MutationCtx, email: string, nowIso: st
     updatedAt: nowIso,
   });
 }
+
+async function getLoginRateLimitRow(ctx: MutationCtx, email: string) {
+  const key = `login-attempt:${email}`;
+  return await ctx.db
+    .query("passwordResetRateLimits")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .first();
+}
+
+export const prepareLoginAttempt = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const nowIso = new Date().toISOString();
+    const nowMs = new Date(nowIso).getTime();
+    const existing = await getLoginRateLimitRow(ctx, email);
+
+    if (!existing || nowMs - new Date(existing.windowStart).getTime() >= LOGIN_WINDOW_MS) {
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          windowStart: nowIso,
+          count: 0,
+          updatedAt: nowIso,
+        });
+      } else {
+        await ctx.db.insert("passwordResetRateLimits", {
+          key: `login-attempt:${email}`,
+          count: 0,
+          windowStart: nowIso,
+          updatedAt: nowIso,
+        });
+      }
+      return { allowed: true };
+    }
+
+    if (existing.count >= LOGIN_LIMIT_PER_WINDOW) {
+      throw new Error("Too many login attempts. Please try again later.");
+    }
+    return { allowed: true };
+  },
+});
+
+export const recordLoginAttempt = mutation({
+  args: {
+    email: v.string(),
+    success: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const nowIso = new Date().toISOString();
+    const existing = await getLoginRateLimitRow(ctx, email);
+
+    if (args.success) {
+      if (existing) {
+        await ctx.db.delete(existing._id);
+      }
+      return { success: true };
+    }
+
+    if (!existing) {
+      await ctx.db.insert("passwordResetRateLimits", {
+        key: `login-attempt:${email}`,
+        count: 1,
+        windowStart: nowIso,
+        updatedAt: nowIso,
+      });
+      return { success: true };
+    }
+
+    await ctx.db.patch(existing._id, {
+      count: existing.count + 1,
+      updatedAt: nowIso,
+    });
+    return { success: true };
+  },
+});
 
 export const me = query({
   args: {},
