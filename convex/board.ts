@@ -36,6 +36,15 @@ type ModuleBoardItem = {
   completedAt: string | null;
   // Recommendation counts for Vinay Review stage
   recommendationCounts: { total: number; pending: number; accepted: number; rejected: number } | null;
+  // Corrections projected score (only for corrections versions)
+  corrections: {
+    previousScore: number;
+    projectedScore: number;
+    fixedCount: number;
+    partialCount: number;
+    notFixedCount: number;
+    totalRecs: number;
+  } | null;
 };
 
 function statusToColumn(status: string): BoardColumn {
@@ -83,6 +92,44 @@ export const getBoard = query({
     }
     const modules = Array.from(latestByModuleId.values());
 
+    // For corrections modules, compute projected score from previous version + fixStatus
+    const correctionsStatuses = ["corrections_intake_complete", "corrections_review_complete"];
+    const correctionsModules = modules.filter((m) => correctionsStatuses.includes(m.status) && m.version > 1);
+    const correctionsMap = new Map<string, { previousScore: number; projectedScore: number; fixedCount: number; partialCount: number; notFixedCount: number; totalRecs: number }>();
+
+    for (const m of correctionsModules) {
+      // Find previous version's score
+      const prevModule = allModules.find((am) => am.moduleId === m.moduleId && am.version === m.version - 1 && !am.deleted);
+      const prevScore = prevModule?.overallScore ?? 0;
+
+      // Get corrections-check recs for this version
+      const corrRecs = await ctx.db
+        .query("recommendations")
+        .withIndex("by_moduleId_version", (q) => q.eq("moduleId", m.moduleId).eq("version", m.version))
+        .collect();
+      const checkRecs = corrRecs.filter((r) => r.sourcePass === "corrections_check");
+
+      let recovered = 0;
+      let fixedCount = 0;
+      let partialCount = 0;
+      let notFixedCount = 0;
+      for (const r of checkRecs) {
+        const pts = r.pointsRecoverable ?? 0;
+        if (r.fixStatus === "fixed") { recovered += pts; fixedCount++; }
+        else if (r.fixStatus === "partially_fixed") { recovered += pts * 0.5; partialCount++; }
+        else { notFixedCount++; }
+      }
+
+      correctionsMap.set(`${m.moduleId}-v${m.version}`, {
+        previousScore: prevScore,
+        projectedScore: Math.min(Math.round(prevScore + recovered), 100),
+        fixedCount,
+        partialCount,
+        notFixedCount,
+        totalRecs: checkRecs.length,
+      });
+    }
+
     // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules
       .filter((m) => m.status === "review_complete" || m.status === "corrections_review_complete")
@@ -125,6 +172,7 @@ export const getBoard = query({
       updatedAt: m.updatedAt,
       completedAt: m.completedAt ?? null,
       recommendationCounts: recCountsMap.get(`${m.moduleId}-v${m.version}`) ?? null,
+      corrections: correctionsMap.get(`${m.moduleId}-v${m.version}`) ?? null,
     }));
   },
 });

@@ -56,6 +56,38 @@ export default function ModuleDetailPage() {
   );
 
   const isCorrectionsVersion = moduleData?.status === "corrections_review_complete" || moduleData?.status === "corrections_intake_complete";
+  const prevVersionData = useQuery(
+    api.modules.detail,
+    moduleData && isCorrectionsVersion && moduleData.version > 1
+      ? { moduleId, version: moduleData.version - 1 }
+      : "skip"
+  );
+
+  // Compute projected corrections score client-side
+  const correctionsProjection = useMemo(() => {
+    if (!isCorrectionsVersion || !prevVersionData || !recommendations) return null;
+    const prevScore = prevVersionData.overallScore ?? 0;
+    const checkRecs = recommendations.filter((r: { sourcePass: string }) => r.sourcePass === "corrections_check");
+    if (checkRecs.length === 0) return null;
+    let recovered = 0;
+    let fixedCount = 0;
+    let partialCount = 0;
+    let notFixedCount = 0;
+    for (const r of checkRecs) {
+      const pts = (r as { pointsRecoverable?: number }).pointsRecoverable ?? 0;
+      const status = (r as { fixStatus?: string }).fixStatus;
+      if (status === "fixed") { recovered += pts; fixedCount++; }
+      else if (status === "partially_fixed") { recovered += pts * 0.5; partialCount++; }
+      else { notFixedCount++; }
+    }
+    return {
+      previousScore: prevScore,
+      projectedScore: Math.min(Math.round(prevScore + recovered), 100),
+      fixedCount,
+      partialCount,
+      notFixedCount,
+    };
+  }, [isCorrectionsVersion, prevVersionData, recommendations]);
   const unexpectedChanges = useQuery(
     api.correctionsDiff.unexpectedChanges,
     moduleData && isCorrectionsVersion && moduleData.version > 1
@@ -253,7 +285,29 @@ export default function ModuleDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {moduleData.overallPercentage != null && (
+              {correctionsProjection ? (
+                <div className="text-right">
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="font-display text-2xl text-stone-400 leading-none">
+                      {correctionsProjection.previousScore}<span className="text-xl">%</span>
+                    </span>
+                    <span className="text-stone-300">&rarr;</span>
+                    <span className="font-display text-4xl text-stone-900 leading-none">
+                      {correctionsProjection.projectedScore}<span className="text-3xl">%</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 justify-end mt-1">
+                    <span className="text-[10px] text-stone-400">projected</span>
+                    <span className="text-[10px] font-mono text-stone-500">
+                      {correctionsProjection.fixedCount > 0 && `${correctionsProjection.fixedCount} fixed`}
+                      {correctionsProjection.fixedCount > 0 && correctionsProjection.partialCount > 0 && " · "}
+                      {correctionsProjection.partialCount > 0 && `${correctionsProjection.partialCount} partial`}
+                      {(correctionsProjection.fixedCount > 0 || correctionsProjection.partialCount > 0) && correctionsProjection.notFixedCount > 0 && " · "}
+                      {correctionsProjection.notFixedCount > 0 && <span className="text-red-400">{correctionsProjection.notFixedCount} not fixed</span>}
+                    </span>
+                  </div>
+                </div>
+              ) : moduleData.overallPercentage != null ? (
                 <>
                   <div className="text-right">
                     <div className="font-display text-4xl text-stone-900 leading-none">
@@ -263,7 +317,7 @@ export default function ModuleDetailPage() {
                   </div>
                   <ScoreBandBadge band={moduleData.scoreBand ?? null} />
                 </>
-              )}
+              ) : null}
             </div>
           </div>
 
