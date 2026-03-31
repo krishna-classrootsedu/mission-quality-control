@@ -71,7 +71,17 @@ function statusToColumn(status: string): BoardColumn {
 export const getBoard = query({
   args: {},
   handler: async (ctx): Promise<ModuleBoardItem[]> => {
-    const { modules } = await getModulesForUser(ctx);
+    const { modules: allModules } = await getModulesForUser(ctx);
+
+    // Show only the latest version per moduleId
+    const latestByModuleId = new Map<string, (typeof allModules)[0]>();
+    for (const m of allModules) {
+      const existing = latestByModuleId.get(m.moduleId);
+      if (!existing || m.version > existing.version) {
+        latestByModuleId.set(m.moduleId, m);
+      }
+    }
+    const modules = Array.from(latestByModuleId.values());
 
     // For modules in Vinay Review, fetch recommendation counts
     const vinayModuleIds = modules
