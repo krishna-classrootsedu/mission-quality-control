@@ -1,7 +1,34 @@
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 import { ROLES, canAccessModule, canReviewModule, requireAnyRole, requireCurrentUser } from "./lib/authz";
+
+async function completeVinayReviewImpl(ctx: Pick<MutationCtx, "db">, moduleId: string, version: number) {
+  const recs = await ctx.db
+    .query("recommendations")
+    .withIndex("by_moduleId_version", (q) =>
+      q.eq("moduleId", moduleId).eq("version", version)
+    )
+    .collect();
+  const pending = recs.filter((r) => r.reviewStatus === "pending");
+  if (pending.length > 0) {
+    throw new Error(`${pending.length} recommendations still pending. Review all before completing.`);
+  }
+  const module = await ctx.db
+    .query("modules")
+    .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+    .order("desc")
+    .first();
+  if (module && module.version === version) {
+    await ctx.db.patch(module._id, {
+      status: "vinay_reviewed",
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
+  const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
+  return { accepted, rejected, total: recs.length };
+}
 
 // Batch-insert recommendations (called by Integrator or Reviewers)
 // When called WITH score fields: updates module score + transitions to review_complete (Integrator path)
@@ -142,35 +169,7 @@ export const completeVinayReview = mutation({
   handler: async (ctx, { moduleId, version }) => {
     const allowed = await canReviewModule(ctx, moduleId);
     if (!allowed) throw new Error("Forbidden: no review access");
-    const recs = await ctx.db
-      .query("recommendations")
-      .withIndex("by_moduleId_version", (q) =>
-        q.eq("moduleId", moduleId).eq("version", version)
-      )
-      .collect();
-
-    const pending = recs.filter((r) => r.reviewStatus === "pending");
-    if (pending.length > 0) {
-      throw new Error(`${pending.length} recommendations still pending. Review all before completing.`);
-    }
-
-    // Update module status
-    const module = await ctx.db
-      .query("modules")
-      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
-      .order("desc")
-      .first();
-
-    if (module && module.version === version) {
-      await ctx.db.patch(module._id, {
-        status: "vinay_reviewed",
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
-    const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
-    const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
-    return { accepted, rejected, total: recs.length };
+    return await completeVinayReviewImpl(ctx, moduleId, version);
   },
 });
 
@@ -264,30 +263,7 @@ export const internalCompleteVinayReview = internalMutation({
     version: v.number(),
   },
   handler: async (ctx, { moduleId, version }) => {
-    const recs = await ctx.db
-      .query("recommendations")
-      .withIndex("by_moduleId_version", (q) =>
-        q.eq("moduleId", moduleId).eq("version", version)
-      )
-      .collect();
-    const pending = recs.filter((r) => r.reviewStatus === "pending");
-    if (pending.length > 0) {
-      throw new Error(`${pending.length} recommendations still pending.`);
-    }
-    const module = await ctx.db
-      .query("modules")
-      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
-      .order("desc")
-      .first();
-    if (module && module.version === version) {
-      await ctx.db.patch(module._id, {
-        status: "vinay_reviewed",
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
-    const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
-    return { accepted, rejected, total: recs.length };
+    return await completeVinayReviewImpl(ctx, moduleId, version);
   },
 });
 

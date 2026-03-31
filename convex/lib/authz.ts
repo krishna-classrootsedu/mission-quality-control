@@ -101,7 +101,13 @@ export async function canAccessModule(ctx: Ctx, moduleId: string): Promise<boole
  */
 export async function getModulesForUser(ctx: Ctx): Promise<{ user: AppUser; modules: any[] }> {
   const user = await requireCurrentUser(ctx, { allowFirstLogin: true });
-  const all = await ctx.db.query("modules").order("desc").take(500);
+  const MODULE_FETCH_LIMIT = 500;
+  const all = await ctx.db.query("modules").order("desc").take(MODULE_FETCH_LIMIT);
+  if (all.length === MODULE_FETCH_LIMIT) {
+    throw new Error(
+      `Module query hit safety limit of ${MODULE_FETCH_LIMIT}. Add pagination before continuing.`
+    );
+  }
   const active = all.filter((m) => !m.deleted);
 
   if (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER) {

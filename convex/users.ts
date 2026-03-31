@@ -1,4 +1,4 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { requireAnyRole, requireCurrentUser, ROLES } from "./lib/authz";
@@ -35,7 +35,7 @@ function generateToken() {
 }
 
 async function getNormalizedEmailForUser(
-  ctx: any,
+  ctx: Pick<MutationCtx, "db">,
   userId: Id<"users">
 ) {
   const user = await ctx.db.get(userId);
@@ -45,7 +45,7 @@ async function getNormalizedEmailForUser(
 
   const passwordAccount = await ctx.db
     .query("authAccounts")
-    .withIndex("userIdAndProvider", (q: any) => q.eq("userId", userId).eq("provider", "password"))
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId).eq("provider", "password"))
     .first();
   const providerEmail = passwordAccount?.providerAccountId
     ? normalizeEmail(passwordAccount.providerAccountId)
@@ -56,6 +56,46 @@ async function getNormalizedEmailForUser(
   }
 
   return providerEmail;
+}
+
+function getAuthMutationCtx(ctx: MutationCtx): Parameters<typeof createAccount>[0] {
+  return ctx as unknown as Parameters<typeof createAccount>[0];
+}
+
+const RESET_WINDOW_MS = 15 * 60 * 1000;
+const RESET_LIMIT_PER_WINDOW = 5;
+
+async function enforceResetRateLimit(ctx: MutationCtx, email: string, nowIso: string) {
+  const key = `password-reset:${email}`;
+  const existing = await ctx.db
+    .query("passwordResetRateLimits")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .first();
+  const nowMs = new Date(nowIso).getTime();
+  if (!existing || nowMs - new Date(existing.windowStart).getTime() >= RESET_WINDOW_MS) {
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        windowStart: nowIso,
+        count: 1,
+        updatedAt: nowIso,
+      });
+    } else {
+      await ctx.db.insert("passwordResetRateLimits", {
+        key,
+        count: 1,
+        windowStart: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+    return;
+  }
+  if (existing.count >= RESET_LIMIT_PER_WINDOW) {
+    throw new Error("Too many reset requests. Please try again later.");
+  }
+  await ctx.db.patch(existing._id, {
+    count: existing.count + 1,
+    updatedAt: nowIso,
+  });
 }
 
 export const me = query({
@@ -156,8 +196,8 @@ export const createUser = mutation({
       throw new Error("User with this email already exists");
     }
 
-    const temporaryPassword = args.defaultPassword ?? `LaunchSpace-${crypto.randomUUID().slice(0, 8)}`;
-    const { user } = await createAccount(ctx as unknown as Parameters<typeof createAccount>[0], {
+    const temporaryPassword = args.defaultPassword ?? `LaunchSpace-${generateToken().slice(0, 12)}`;
+    const { user } = await createAccount(getAuthMutationCtx(ctx), {
       provider: "password",
       account: { id: email, secret: temporaryPassword },
       profile: args.name ? { email, name: args.name } : { email },
@@ -245,10 +285,10 @@ export const changeFirstLoginPassword = mutation({
     if (!current.isFirstLogin) {
       throw new Error("Password change is only required during first login");
     }
-    const email = await getNormalizedEmailForUser(ctx as any, current._id);
+    const email = await getNormalizedEmailForUser(ctx, current._id);
     if (!email) throw new Error("Account email is missing");
 
-    await modifyAccountCredentials(ctx as unknown as Parameters<typeof modifyAccountCredentials>[0], {
+    await modifyAccountCredentials(getAuthMutationCtx(ctx), {
       provider: "password",
       account: { id: normalizeEmail(email), secret: args.newPassword },
     });
@@ -264,7 +304,7 @@ export const changeFirstLoginPassword = mutation({
       });
     }
 
-    await invalidateSessions(ctx as unknown as Parameters<typeof invalidateSessions>[0], { userId: current._id });
+    await invalidateSessions(getAuthMutationCtx(ctx), { userId: current._id });
     return { success: true, mustSignInAgain: true };
   },
 });
@@ -275,6 +315,8 @@ export const requestPasswordReset = mutation({
   },
   handler: async (ctx, args) => {
     const email = normalizeEmail(args.email);
+    const now = new Date().toISOString();
+    await enforceResetRateLimit(ctx, email, now);
     const user = await ctx.db
       .query("users")
       .withIndex("email", (q) => q.eq("email", email))
@@ -293,7 +335,6 @@ export const requestPasswordReset = mutation({
       return { success: true };
     }
 
-    const now = new Date();
     const token = generateToken();
     const tokenHash = await hashToken(token);
 
@@ -308,19 +349,19 @@ export const requestPasswordReset = mutation({
     await ctx.db.insert("passwordResetTokens", {
       userId: user._id,
       tokenHash,
-      expiresAt: new Date(now.getTime() + 1000 * 60 * 15).toISOString(),
-      createdAt: now.toISOString(),
+      expiresAt: new Date(new Date(now).getTime() + 1000 * 60 * 15).toISOString(),
+      createdAt: now,
     });
 
     await ctx.db.insert("auditAuthEvents", {
       targetUserId: user._id,
       action: "password_reset_requested",
-      createdAt: now.toISOString(),
+      createdAt: now,
     });
 
     return {
       success: true,
-      resetToken: token,
+      // User-initiated flow is admin-assisted only. Use adminGenerateResetToken for token retrieval.
     };
   },
 });
@@ -371,6 +412,7 @@ export const adminGenerateResetToken = mutation({
 
 export const resetPasswordWithToken = mutation({
   args: {
+    email: v.string(),
     token: v.string(),
     newPassword: v.string(),
   },
@@ -390,12 +432,15 @@ export const resetPasswordWithToken = mutation({
     }
 
     const user = await ctx.db.get(reset.userId);
-    const email = await getNormalizedEmailForUser(ctx as any, reset.userId);
+    const email = await getNormalizedEmailForUser(ctx, reset.userId);
     if (!user || !email) {
       throw new Error("Associated user not found");
     }
+    if (normalizeEmail(args.email) !== normalizeEmail(email)) {
+      throw new Error("Email does not match this reset token");
+    }
 
-    await modifyAccountCredentials(ctx as unknown as Parameters<typeof modifyAccountCredentials>[0], {
+    await modifyAccountCredentials(getAuthMutationCtx(ctx), {
       provider: "password",
       account: { id: normalizeEmail(email), secret: args.newPassword },
     });
@@ -410,7 +455,7 @@ export const resetPasswordWithToken = mutation({
       await ctx.db.patch(profile._id, { isFirstLogin: false, updatedAt: now });
     }
 
-    await invalidateSessions(ctx as unknown as Parameters<typeof invalidateSessions>[0], { userId: user._id });
+    await invalidateSessions(getAuthMutationCtx(ctx), { userId: user._id });
     await ctx.db.insert("auditAuthEvents", {
       targetUserId: user._id,
       action: "password_reset_completed",
@@ -458,9 +503,9 @@ export const setUserRoleByEmailInternal = internalMutation({
 
     if (!user && args.createIfMissing) {
       const temporaryPassword =
-        args.defaultPassword ?? `LaunchSpace-${crypto.randomUUID().slice(0, 8)}`;
+        args.defaultPassword ?? `LaunchSpace-${generateToken().slice(0, 12)}`;
       const created = await createAccount(
-        ctx as unknown as Parameters<typeof createAccount>[0],
+        getAuthMutationCtx(ctx),
         {
           provider: "password",
           account: { id: email, secret: temporaryPassword },
@@ -558,7 +603,7 @@ export const setUserPasswordByEmailInternal = internalMutation({
     }
 
     await modifyAccountCredentials(
-      ctx as unknown as Parameters<typeof modifyAccountCredentials>[0],
+      getAuthMutationCtx(ctx),
       {
         provider: "password",
         account: { id: email, secret: args.newPassword },

@@ -10,6 +10,8 @@ export function middleware(request: NextRequest) {
   );
   if (!isProtected) return NextResponse.next();
 
+  // UX-only redirect hint. This cookie is client-set and is NOT a security boundary.
+  // Real authorization is enforced in Convex queries/mutations.
   const hasSession = request.cookies.get("__session_hint")?.value === "1";
   if (hasSession) return NextResponse.next();
 

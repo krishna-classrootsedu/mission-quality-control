@@ -235,7 +235,7 @@ export const submitModule = mutation({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 40);
-    const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
+    const moduleId = `MOD-${slug}-${crypto.randomUUID()}`;
 
     const pptxFileUrl = await ctx.storage.getUrl(args.pptxStorageId);
 
@@ -325,7 +325,7 @@ export const submitModuleWithFlow = mutation({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 40);
-    const moduleId = `MOD-${slug}-${Date.now().toString(36)}`;
+    const moduleId = `MOD-${slug}-${crypto.randomUUID()}`;
 
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
 

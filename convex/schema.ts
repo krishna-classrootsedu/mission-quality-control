@@ -58,6 +58,13 @@ export default defineSchema({
     .index("by_moduleId", ["moduleId"])
     .index("by_createdAt", ["createdAt"]),
 
+  passwordResetRateLimits: defineTable({
+    key: v.string(),
+    count: v.number(),
+    windowStart: v.string(),
+    updatedAt: v.string(),
+  }).index("by_key", ["key"]),
+
   // One row per module submission
   modules: defineTable({
     moduleId: v.string(),
