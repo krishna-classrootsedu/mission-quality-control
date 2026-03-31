@@ -38,14 +38,34 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
               <HealthBar updatedAt={module.updatedAt} />
             </div>
 
-            {module.overallPercentage !== null && (
+            {module.corrections && module.corrections.totalRecs > 0 ? (
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-display text-lg text-stone-400">{module.corrections.previousScore}%</span>
+                  <span className="text-stone-300 text-sm">&rarr;</span>
+                  <span className="font-display text-2xl text-stone-900">{module.corrections.projectedScore}%</span>
+                  <span className="text-[10px] text-stone-400 font-medium ml-0.5">projected</span>
+                </div>
+                <div className="flex gap-2 text-[10px] font-mono">
+                  {module.corrections.fixedCount > 0 && (
+                    <span className="text-stone-600">{module.corrections.fixedCount} fixed</span>
+                  )}
+                  {module.corrections.partialCount > 0 && (
+                    <span className="text-stone-400">{module.corrections.partialCount} partial</span>
+                  )}
+                  {module.corrections.notFixedCount > 0 && (
+                    <span className="text-red-400">{module.corrections.notFixedCount} not fixed</span>
+                  )}
+                </div>
+              </div>
+            ) : module.overallPercentage !== null ? (
               <div className="flex items-center gap-2.5">
                 <span className="font-display text-2xl text-stone-900">
                   {module.overallPercentage}%
                 </span>
                 <ScoreBandBadge band={module.scoreBand} />
               </div>
-            )}
+            ) : null}
 
             {(module.spineComplete || module.totalApplets > 0) && (
               <div className="flex gap-1.5">

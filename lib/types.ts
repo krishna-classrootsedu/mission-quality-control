@@ -102,6 +102,14 @@ export type ModuleBoardItem = {
     accepted: number;
     rejected: number;
   } | null;
+  corrections: {
+    previousScore: number;
+    projectedScore: number;
+    fixedCount: number;
+    partialCount: number;
+    notFixedCount: number;
+    totalRecs: number;
+  } | null;
 };
 
 // Column config — all neutral stone palette (quiet luxury: the label is enough differentiation)
