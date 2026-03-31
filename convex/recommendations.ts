@@ -297,7 +297,7 @@ export const byModule = query({
       .collect();
 
     if (user.role === ROLES.CONTENT_CREATOR) {
-      return recs.filter((r) => r.reviewStatus !== "pending");
+      return recs.filter((r) => r.reviewStatus !== "pending" || r.source === "reviewer");
     }
     return recs;
   },
