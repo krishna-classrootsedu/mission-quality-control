@@ -149,7 +149,7 @@ export default function ModuleDetailPage() {
     const badges: Record<string, number> = {};
     for (const r of recommendations) {
       if (r.reviewStatus !== "pending") continue;
-      if (r.slideNumber == null) {
+      if (r.component === "module") {
         badges["global"] = (badges["global"] ?? 0) + 1;
       } else {
         badges[r.component] = (badges[r.component] ?? 0) + 1;
@@ -261,7 +261,7 @@ export default function ModuleDetailPage() {
                   const count = tab.key === "custom"
                     ? recommendations.filter((r) => r.source === "reviewer").length
                     : tab.key === "global"
-                      ? recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer").length
+                      ? recommendations.filter((r) => r.component === "module" && r.source !== "reviewer").length
                       : tab.key === "spine"
                         ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
                         : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
@@ -835,7 +835,7 @@ function GlobalContent({
   onDecisionChange: (id: string, status: string, comment: string) => void;
   readOnly?: boolean;
 }) {
-  const globalRecs = recommendations.filter((r) => r.slideNumber == null && r.source !== "reviewer");
+  const globalRecs = recommendations.filter((r) => r.component === "module" && r.source !== "reviewer");
   const allQuadrants = reviewScores.flatMap((rs) => rs.quadrantScores);
 
   return (
