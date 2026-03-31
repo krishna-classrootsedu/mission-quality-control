@@ -35,6 +35,19 @@ export default function UsagePage() {
     );
   }
 
+  if (me.role !== "manager" && me.role !== "admin") {
+    return (
+      <main className="max-w-[1400px] mx-auto px-6 py-8">
+        <div className="bg-white rounded-lg border border-stone-200 p-6">
+          <h1 className="text-lg font-semibold text-stone-800">Permission denied</h1>
+          <p className="text-sm text-stone-500 mt-2">
+            Only managers and admins can view usage data.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   if (data === undefined) {
     return (
       <main className="max-w-[1400px] mx-auto px-6 py-8">

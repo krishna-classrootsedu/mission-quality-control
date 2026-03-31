@@ -23,10 +23,7 @@ export default function ModuleDetailPage() {
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
-  const [showAllocation, setShowAllocation] = useState(false);
   const me = useQuery(api.users.me);
-
-  const canManage = me?.role === "manager" || me?.role === "admin";
 
   const allVersions = useQuery(api.modules.allVersions, me ? { moduleId } : "skip");
   const moduleData = useQuery(
@@ -236,18 +233,6 @@ export default function ModuleDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {canManage && (
-                <button
-                  onClick={() => setShowAllocation((v) => !v)}
-                  className={`px-3 py-1.5 text-[12px] font-medium rounded-lg border transition-all ${
-                    showAllocation
-                      ? "bg-stone-800 text-white border-stone-800"
-                      : "bg-white text-stone-600 border-stone-200 hover:border-stone-300"
-                  }`}
-                >
-                  Assign Reviewers
-                </button>
-              )}
               {moduleData.overallPercentage != null && (
                 <>
                   <div className="text-right">
@@ -261,10 +246,6 @@ export default function ModuleDetailPage() {
               )}
             </div>
           </div>
-
-          {canManage && showAllocation && moduleData && (
-            <ModuleAllocationPanel moduleId={moduleData.moduleId} />
-          )}
 
           {/* Tabs */}
           <div className="flex gap-0 -mb-px overflow-x-auto">
@@ -834,83 +815,6 @@ type Recommendation = {
   source?: string;
   agentName?: string;
 };
-
-function ModuleAllocationPanel({ moduleId }: { moduleId: string }) {
-  const reviewers = useQuery(api.users.reviewers);
-  const allocations = useQuery(api.users.moduleAllocations, { moduleId });
-  const grantPermission = useMutation(api.users.grantModulePermissions);
-  const revokePermission = useMutation(api.users.revokeModulePermissions);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const allocatedIds = new Set(allocations?.map((a) => a.userId) ?? []);
-
-  const handleAssign = async (userId: Id<"users">) => {
-    setBusy(userId);
-    try {
-      await grantPermission({
-        moduleId,
-        userId,
-        permissions: ["module:view", "module:review"],
-        grantSource: "manager_ui",
-      });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to assign");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleUnassign = async (userId: Id<"users">) => {
-    setBusy(userId);
-    try {
-      await revokePermission({ moduleId, userId });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to unassign");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  if (!reviewers || !allocations) {
-    return (
-      <div className="py-2">
-        <div className="h-6 w-40 animate-pulse bg-stone-100 rounded" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="py-2 border-t border-stone-100">
-      <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em]">
-        Assigned Reviewers
-      </span>
-      <div className="flex flex-wrap gap-2 mt-2">
-        {reviewers.map((r) => {
-          const isAllocated = allocatedIds.has(r.userId);
-          const isBusy = busy === r.userId;
-          return (
-            <button
-              key={r.userId}
-              disabled={isBusy}
-              onClick={() => isAllocated ? handleUnassign(r.userId) : handleAssign(r.userId)}
-              className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-all disabled:opacity-50 ${
-                isAllocated
-                  ? "bg-stone-800 text-white border-stone-800 hover:bg-stone-700"
-                  : "bg-white text-stone-500 border-stone-200 hover:border-stone-300 hover:text-stone-700"
-              }`}
-            >
-              {r.name ?? r.email ?? "Unknown"}
-              {isAllocated && " \u2713"}
-            </button>
-          );
-        })}
-        {reviewers.length === 0 && (
-          <span className="text-[12px] text-stone-400">No lead reviewers available</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function GlobalContent({
   moduleData,

@@ -1,6 +1,6 @@
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireCurrentUser } from "./lib/authz";
+import { ROLES, requireAnyRole } from "./lib/authz";
 
 const DEFAULT_DAILY_AGGREGATE_LIMIT = 250;
 const MAX_DAILY_AGGREGATE_LIMIT = 500;
@@ -86,7 +86,7 @@ export const pushBatch = internalMutation({
 export const byModule = query({
   args: { moduleId: v.string() },
   handler: async (ctx, { moduleId }) => {
-    await requireCurrentUser(ctx, { allowFirstLogin: true });
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN], { allowFirstLogin: true });
     return await ctx.db
       .query("tokenUsage")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
@@ -97,7 +97,7 @@ export const byModule = query({
 export const dailyAggregate = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    await requireCurrentUser(ctx, { allowFirstLogin: true });
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN], { allowFirstLogin: true });
     const pageLimit = normalizeLimit(limit);
     const all = await ctx.db
       .query("tokenUsage")

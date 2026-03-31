@@ -12,7 +12,8 @@ type NavLink = { href: string; label: string; roles?: string[] };
 const NAV_LINKS: NavLink[] = [
   { href: "/board", label: "Board" },
   { href: "/upload", label: "Upload", roles: ["content_creator", "lead_reviewer", "manager", "admin"] },
-  { href: "/usage", label: "Usage" },
+  { href: "/allocations", label: "Allocations", roles: ["manager", "admin"] },
+  { href: "/usage", label: "Usage", roles: ["manager", "admin"] },
 ];
 
 export default function NavBar() {

@@ -226,15 +226,7 @@ export const upsertSelf = mutation({
       await ctx.db.patch(existingProfile._id, { updatedAt: now });
       return { action: "updated", userId };
     }
-    await ctx.db.insert("userProfiles", {
-      userId,
-      role: ROLES.CONTENT_CREATOR,
-      isFirstLogin: false,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { action: "created", userId };
+    return { action: "no_profile", userId };
   },
 });
 
@@ -824,6 +816,43 @@ export const moduleAllocations = query({
       email: users[i]?.email ?? null,
       permissions: p.permissions,
     }));
+  },
+});
+
+// All allocations across all modules (for the dedicated Allocations page)
+export const allAllocations = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const allPerms = await ctx.db.query("modulePermissions").collect();
+    const now = Date.now();
+    const active = allPerms.filter(
+      (p) => !p.expiresAt || new Date(p.expiresAt).getTime() >= now
+    );
+    const userIds = Array.from(new Set(active.map((p) => p.userId)));
+    const usersMap = new Map<string, { name: string | null; email: string | null }>();
+    for (const uid of userIds) {
+      const u = await ctx.db.get(uid);
+      usersMap.set(uid, { name: u?.name ?? null, email: u?.email ?? null });
+    }
+    // Group by moduleId
+    const grouped: Record<string, Array<{
+      userId: string;
+      name: string | null;
+      email: string | null;
+      permissions: string[];
+    }>> = {};
+    for (const p of active) {
+      if (!grouped[p.moduleId]) grouped[p.moduleId] = [];
+      const u = usersMap.get(p.userId);
+      grouped[p.moduleId].push({
+        userId: p.userId,
+        name: u?.name ?? null,
+        email: u?.email ?? null,
+        permissions: p.permissions,
+      });
+    }
+    return grouped;
   },
 });
 

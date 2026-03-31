@@ -1,6 +1,6 @@
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireCurrentUser } from "./lib/authz";
+import { ROLES, requireAnyRole } from "./lib/authz";
 
 const DEFAULT_ACTIVITY_LIMIT = 50;
 const MAX_ACTIVITY_LIMIT = 200;
@@ -47,7 +47,7 @@ export const ingest = internalMutation({
 export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    await requireCurrentUser(ctx);
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
     const pageLimit = normalizeLimit(limit);
     return await ctx.db
       .query("agentActivity")

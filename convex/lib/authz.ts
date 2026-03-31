@@ -137,13 +137,17 @@ export async function getModulesForUser(ctx: Ctx): Promise<{ user: AppUser; modu
 
 export async function canReviewModule(ctx: Ctx, moduleId: string): Promise<boolean> {
   const user = await requireCurrentUser(ctx);
-  if (
-    user.role === ROLES.ADMIN ||
-    user.role === ROLES.MANAGER ||
-    user.role === ROLES.LEAD_REVIEWER
-  ) {
-    return true;
+  if (user.role === ROLES.ADMIN || user.role === ROLES.MANAGER) return true;
+
+  if (user.role === ROLES.LEAD_REVIEWER) {
+    const perm = await ctx.db
+      .query("modulePermissions")
+      .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId).eq("userId", user._id))
+      .first();
+    if (perm && (!perm.expiresAt || new Date(perm.expiresAt).getTime() >= Date.now())) return true;
+    return false;
   }
+
   return hasOverridePermission(ctx, moduleId, "module:review", user._id);
 }
 
