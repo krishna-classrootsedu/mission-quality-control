@@ -664,6 +664,67 @@ export const internalFinalizeCorrectionsReview = internalMutation({
   },
 });
 
+export const markShipReady = mutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+  },
+  handler: async (ctx, { moduleId, version }) => {
+    const actor = await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+    const actorUser = await ctx.db.get(actor._id);
+    const actorName = actorUser?.name?.trim() || actorUser?.email?.trim() || actor.role;
+
+    const module = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .order("desc")
+      .first();
+    if (!module) throw new Error(`Module not found: ${moduleId}`);
+    if (module.deleted) throw new Error("Module has been deleted");
+    if (module.version !== version) {
+      throw new Error(`Version mismatch: expected ${version}, found ${module.version}`);
+    }
+
+    const eligibleStatuses = [
+      "review_complete",
+      "corrections_intake_complete",
+      "corrections_review_complete",
+    ] as const;
+    if (!eligibleStatuses.includes(module.status as (typeof eligibleStatuses)[number])) {
+      throw new Error(
+        `Module must be in vinay review bucket or corrections flow to mark ship ready, got: ${module.status}`
+      );
+    }
+
+    const now = new Date().toISOString();
+    await ctx.db.patch(module._id, {
+      status: "ship_ready",
+      updatedAt: now,
+      completedAt: now,
+    });
+
+    await logActivityIfNew(ctx, {
+      agentName: actorName,
+      action: "module_marked_ship_ready",
+      message: `Module "${module.title}" marked ship-ready by ${actorName}`,
+      dedupKey: `module-mark-ship-ready-${module.moduleId}-v${module.version}`,
+      metadata: {
+        moduleId: module.moduleId,
+        version: module.version,
+        actorUserId: actor._id,
+        actorRole: actor.role,
+        actorName,
+        previousStatus: module.status,
+        newStatus: "ship_ready",
+      },
+    });
+
+    return { success: true, moduleId: module.moduleId, version: module.version, status: "ship_ready" };
+  },
+});
+
 // Modules eligible for corrections submission (vinay_reviewed or creator_fixing)
 export const correctableModules = query({
   args: {},

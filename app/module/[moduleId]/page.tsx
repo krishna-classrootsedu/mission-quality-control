@@ -98,6 +98,7 @@ export default function ModuleDetailPage() {
   const reviewMutation = useMutation(api.recommendations.review);
   const completeMutation = useMutation(api.recommendations.completeVinayReview);
   const finalizeCorrections = useMutation(api.modules.finalizeCorrectionsReview);
+  const markShipReadyMutation = useMutation(api.modules.markShipReady);
 
   const tabs = useMemo(() => {
     const baseTabs = [
@@ -196,6 +197,20 @@ export default function ModuleDetailPage() {
     }
   };
 
+  const handleMarkShipReady = async () => {
+    if (me?.role !== "manager" && me?.role !== "admin") {
+      alert("Only managers or admins can mark a module ship-ready");
+      return;
+    }
+    if (!moduleData) return;
+    try {
+      await markShipReadyMutation({ moduleId, version: moduleData.version });
+      alert("Module marked ship-ready.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to mark module ship-ready");
+    }
+  };
+
   const tabBadges = useMemo(() => {
     if (!recommendations) return {};
     const badges: Record<string, number> = {};
@@ -239,6 +254,11 @@ export default function ModuleDetailPage() {
   }
 
   const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+  const canPrivilegedMarkShipReady =
+    (me?.role === "manager" || me?.role === "admin") &&
+    ["review_complete", "corrections_intake_complete", "corrections_review_complete"].includes(
+      moduleData.status
+    );
   const recCount = recommendations?.length ?? 0;
   const pendingCount = recommendations?.filter((r) => r.reviewStatus === "pending").length ?? 0;
   const saveableCount = Array.from(decisions.values()).filter((d) => d.status !== "pending").length;
@@ -285,6 +305,14 @@ export default function ModuleDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {canPrivilegedMarkShipReady && (
+                <button
+                  onClick={handleMarkShipReady}
+                  className="px-4 py-2 bg-emerald-700 text-white rounded-lg text-sm font-medium hover:bg-emerald-800 transition-all"
+                >
+                  Mark it Ship Ready
+                </button>
+              )}
               {correctionsProjection ? (
                 <div className="text-right">
                   <div className="flex items-center gap-2 justify-end">

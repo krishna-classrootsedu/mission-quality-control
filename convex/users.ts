@@ -712,6 +712,16 @@ export const grantModulePermissions = mutation({
   },
   handler: async (ctx, args) => {
     const actor = await requireAnyRole(ctx, [ROLES.ADMIN, ROLES.MANAGER]);
+    const targetProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!targetProfile || !targetProfile.isActive) {
+      throw new Error("Target user is not active");
+    }
+    if (targetProfile.role !== ROLES.LEAD_REVIEWER && targetProfile.role !== ROLES.MANAGER) {
+      throw new Error("Module allocations are only allowed for lead reviewers or managers");
+    }
     const now = new Date().toISOString();
     const existing = await ctx.db
       .query("modulePermissions")
@@ -780,7 +790,7 @@ export const reviewers = query({
     await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
     const profiles = await ctx.db.query("userProfiles").collect();
     const reviewerProfiles = profiles.filter(
-      (p) => p.role === ROLES.LEAD_REVIEWER && p.isActive
+      (p) => (p.role === ROLES.LEAD_REVIEWER || p.role === ROLES.MANAGER) && p.isActive
     );
     const users = await Promise.all(
       reviewerProfiles.map((p) => ctx.db.get(p.userId))

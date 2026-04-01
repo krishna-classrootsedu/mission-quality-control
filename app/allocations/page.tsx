@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { createPortal } from "react-dom";
 
 type Reviewer = {
   userId: Id<"users">;
@@ -78,13 +79,38 @@ function AssignDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const clickedTrigger = ref.current?.contains(target) ?? false;
+      const clickedMenu = menuRef.current?.contains(target) ?? false;
+      if (!clickedTrigger && !clickedMenu) setOpen(false);
     }
     if (open) document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const updateMenuPosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuStyle({
+        top: rect.bottom + 4,
+        left: Math.max(8, rect.right - 180),
+      });
+    };
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
   }, [open]);
 
   const available = reviewers.filter((r) => !allocatedIds.has(r.userId));
@@ -92,28 +118,35 @@ function AssignDropdown({
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
         disabled={busy || available.length === 0}
         className="px-2 py-1 text-[11px] border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {available.length === 0 ? "All assigned" : "+ Assign"}
       </button>
-      {open && available.length > 0 && (
-        <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-30 min-w-[180px] py-1">
-          {available.map((r) => (
-            <button
-              key={r.userId}
-              onClick={() => {
-                onAssign(r.userId);
-                setOpen(false);
-              }}
-              className="w-full text-left px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50"
-            >
-              {r.name ?? r.email ?? "Unknown"}
-            </button>
-          ))}
-        </div>
-      )}
+      {open && available.length > 0 && menuStyle &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed bg-white border border-stone-200 rounded-lg shadow-lg z-[100] min-w-[180px] py-1"
+            style={{ top: menuStyle.top, left: menuStyle.left }}
+          >
+            {available.map((r) => (
+              <button
+                key={r.userId}
+                onClick={() => {
+                  onAssign(r.userId);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50"
+              >
+                {r.name ?? r.email ?? "Unknown"}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
