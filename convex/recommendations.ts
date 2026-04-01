@@ -19,15 +19,41 @@ async function completeVinayReviewImpl(ctx: Pick<MutationCtx, "db">, moduleId: s
     .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
     .order("desc")
     .first();
+
+  // Add back pointsRecoverable from rejected initial-review recs
+  const rejectedInitialRecs = recs.filter(
+    (r) =>
+      r.reviewStatus === "rejected" &&
+      r.sourcePass !== "corrections_check" &&
+      r.sourcePass !== "custom_review"
+  );
+  const addBackPoints = rejectedInitialRecs.reduce(
+    (sum, r) => sum + (r.pointsRecoverable ?? 0),
+    0
+  );
+
+  let adjustedScore: number | undefined;
+  let scoreBand: string | undefined;
   if (module && module.version === version) {
+    const currentScore = module.overallScore ?? 0;
+    adjustedScore = Math.min(Math.round(currentScore + addBackPoints), 100);
+
+    if (adjustedScore >= 90) scoreBand = "Ship-ready";
+    else if (adjustedScore >= 75) scoreBand = "Upgradeable";
+    else if (adjustedScore >= 50) scoreBand = "Rework";
+    else scoreBand = "Redesign";
+
     await ctx.db.patch(module._id, {
       status: "vinay_reviewed",
+      overallScore: adjustedScore,
+      overallPercentage: adjustedScore,
+      scoreBand,
       updatedAt: new Date().toISOString(),
     });
   }
   const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
   const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
-  return { accepted, rejected, total: recs.length };
+  return { accepted, rejected, total: recs.length, addBackPoints, adjustedScore, scoreBand };
 }
 
 // Batch-insert recommendations (called by Integrator or Reviewers)
@@ -72,6 +98,25 @@ export const pushBatch = internalMutation({
       .withIndex("by_dedupKey", (q) => q.eq("dedupKey", `activity-${args.dedupKey}`))
       .first();
     if (existingActivity) return { action: "duplicate" };
+
+    // Semantic dedup: if corrections_check recs already exist for this module+version, reject
+    const isCorrectionsPass = args.recommendations.some(
+      (r) => r.sourcePass === "corrections_check"
+    );
+    if (isCorrectionsPass) {
+      const existingRecs = await ctx.db
+        .query("recommendations")
+        .withIndex("by_moduleId_version", (q) =>
+          q.eq("moduleId", args.moduleId).eq("version", args.version)
+        )
+        .collect();
+      const existingCorrections = existingRecs.filter(
+        (r) => r.sourcePass === "corrections_check"
+      );
+      if (existingCorrections.length > 0) {
+        return { action: "duplicate_corrections", existingCount: existingCorrections.length };
+      }
+    }
 
     const now = new Date().toISOString();
 

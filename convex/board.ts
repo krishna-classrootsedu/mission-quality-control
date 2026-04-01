@@ -107,7 +107,7 @@ export const getBoard = query({
         .query("recommendations")
         .withIndex("by_moduleId_version", (q) => q.eq("moduleId", m.moduleId).eq("version", m.version))
         .collect();
-      const checkRecs = corrRecs.filter((r) => r.sourcePass === "corrections_check");
+      const checkRecs = corrRecs.filter((r) => r.sourcePass === "corrections_check" && r.reviewStatus === "accepted");
 
       let recovered = 0;
       let fixedCount = 0;
