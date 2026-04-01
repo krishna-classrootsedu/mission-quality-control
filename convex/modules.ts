@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery, mutation, query, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { logActivityIfNew, isModuleDeleted } from "./lib/activityHelper";
 import { ROLES, canAccessModule, getModulesForUser, requireAnyRole, requireCurrentUser } from "./lib/authz";
 
@@ -28,6 +29,40 @@ const MAX_MODULE_PAGE_LIMIT = 200;
 function normalizePageLimit(limit?: number) {
   const safe = limit ?? DEFAULT_MODULE_PAGE_LIMIT;
   return Math.max(1, Math.min(MAX_MODULE_PAGE_LIMIT, Math.floor(safe)));
+}
+
+async function ensureUploaderModuleAccess(
+  ctx: Pick<MutationCtx, "db">,
+  moduleId: string,
+  userId: Id<"users">,
+  now: string
+) {
+  const existing = await ctx.db
+    .query("modulePermissions")
+    .withIndex("by_moduleId_userId", (q) => q.eq("moduleId", moduleId).eq("userId", userId))
+    .first();
+
+  const mergedPermissions = Array.from(
+    new Set([...(existing?.permissions ?? []), "module:view", "module:review"])
+  );
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      permissions: mergedPermissions,
+      grantSource: existing.grantSource ?? "uploader_auto_grant",
+      updatedAt: now,
+    });
+    return;
+  }
+
+  await ctx.db.insert("modulePermissions", {
+    moduleId,
+    userId,
+    permissions: ["module:view", "module:review"],
+    grantSource: "uploader_auto_grant",
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 // Upsert a module — new submission or re-submission
@@ -302,6 +337,8 @@ export const submitModule = mutation({
       metadata: { moduleId, fileName: args.fileName, submittedBy: args.submittedBy },
     });
 
+    await ensureUploaderModuleAccess(ctx, moduleId, user._id, now);
+
     return { id, moduleId, version: 1 };
   },
 });
@@ -426,6 +463,8 @@ export const submitModuleWithFlow = mutation({
       dedupKey: `module-submit-flow-${moduleId}-v1`,
       metadata: { moduleId, sourceFileCount: args.sourceFiles.length, slideCount: totalSlides },
     });
+
+    await ensureUploaderModuleAccess(ctx, moduleId, user._id, now);
 
     return { id: moduleDocId, moduleId, version: 1, slideCount: totalSlides };
   },
