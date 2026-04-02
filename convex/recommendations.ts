@@ -93,17 +93,20 @@ export const pushBatch = internalMutation({
     if (await isModuleDeleted(ctx, args.moduleId)) return { action: "module_deleted" };
 
     // Dedup — check if we already processed this batch
-    const existingActivity = await ctx.db
-      .query("agentActivity")
-      .withIndex("by_dedupKey", (q) => q.eq("dedupKey", `activity-${args.dedupKey}`))
-      .first();
-    if (existingActivity) return { action: "duplicate" };
-
-    // Semantic dedup: if corrections_check recs already exist for this
-    // component+module+version, upsert — delete stale ones, then insert fresh.
+    // For corrections passes, skip activity dedup — Layer 2 upsert handles re-runs
     const isCorrectionsPass = args.recommendations.some(
       (r) => r.sourcePass === "corrections_check"
     );
+    if (!isCorrectionsPass) {
+      const existingActivity = await ctx.db
+        .query("agentActivity")
+        .withIndex("by_dedupKey", (q) => q.eq("dedupKey", `activity-${args.dedupKey}`))
+        .first();
+      if (existingActivity) return { action: "duplicate" };
+    }
+
+    // Semantic dedup: if corrections_check recs already exist for this
+    // component+module+version, upsert — delete stale ones, then insert fresh.
     let upsertedComponent: string | null = null;
     let deletedCount = 0;
 
