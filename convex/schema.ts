@@ -242,6 +242,7 @@ export default defineSchema({
   })
     .index("by_moduleId_version", ["moduleId", "version"])
     .index("by_moduleId_version_status", ["moduleId", "version", "reviewStatus"])
+    .index("by_moduleId_version_component", ["moduleId", "version", "component"])
     .index("by_reviewStatus", ["reviewStatus"]),
 
   // Flow map — structural map of module (Flow Mapper agent output)

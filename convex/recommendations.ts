@@ -99,22 +99,37 @@ export const pushBatch = internalMutation({
       .first();
     if (existingActivity) return { action: "duplicate" };
 
-    // Semantic dedup: if corrections_check recs already exist for this module+version, reject
+    // Semantic dedup: if corrections_check recs already exist for this
+    // component+module+version, upsert — delete stale ones, then insert fresh.
     const isCorrectionsPass = args.recommendations.some(
       (r) => r.sourcePass === "corrections_check"
     );
+    let upsertedComponent: string | null = null;
+    let deletedCount = 0;
+
     if (isCorrectionsPass) {
+      const component = args.recommendations[0].component;
+
       const existingRecs = await ctx.db
         .query("recommendations")
-        .withIndex("by_moduleId_version", (q) =>
-          q.eq("moduleId", args.moduleId).eq("version", args.version)
+        .withIndex("by_moduleId_version_component", (q) =>
+          q
+            .eq("moduleId", args.moduleId)
+            .eq("version", args.version)
+            .eq("component", component)
         )
         .collect();
+
       const existingCorrections = existingRecs.filter(
         (r) => r.sourcePass === "corrections_check"
       );
+
       if (existingCorrections.length > 0) {
-        return { action: "duplicate_corrections", existingCount: existingCorrections.length };
+        for (const old of existingCorrections) {
+          await ctx.db.delete(old._id);
+        }
+        upsertedComponent = component;
+        deletedCount = existingCorrections.length;
       }
     }
 
@@ -166,14 +181,21 @@ export const pushBatch = internalMutation({
       }
     }
 
+    const upsertNote = upsertedComponent
+      ? ` (upsert: replaced ${deletedCount} stale corrections for ${upsertedComponent})`
+      : "";
+
     await logActivityIfNew(ctx, {
       agentName: args.agentName,
-      action: "recommendations_pushed",
-      message: `${args.recommendations.length} recommendations for "${args.moduleId}" v${args.version}. Band: ${args.scoreBand ?? "unknown"}`,
+      action: upsertedComponent ? "recommendations_upserted" : "recommendations_pushed",
+      message: `${args.recommendations.length} recommendations for "${args.moduleId}" v${args.version}. Band: ${args.scoreBand ?? "unknown"}${upsertNote}`,
       dedupKey: `activity-${args.dedupKey}`,
       metadata: { moduleId: args.moduleId, version: args.version, count: args.recommendations.length, scoreBand: args.scoreBand },
     });
 
+    if (upsertedComponent) {
+      return { action: "upserted", count: args.recommendations.length, replacedCount: deletedCount, component: upsertedComponent };
+    }
     return { action: "created", count: args.recommendations.length };
   },
 });
