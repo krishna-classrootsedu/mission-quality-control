@@ -689,6 +689,7 @@ export const markShipReady = mutation({
 
     const eligibleStatuses = [
       "review_complete",
+      "vinay_reviewed",
       "corrections_intake_complete",
       "corrections_review_complete",
     ] as const;

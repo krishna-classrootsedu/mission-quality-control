@@ -20,29 +20,130 @@ async function completeVinayReviewImpl(ctx: Pick<MutationCtx, "db">, moduleId: s
     .order("desc")
     .first();
 
-  // Add back pointsRecoverable from rejected initial-review recs
+  // Get review scores to calculate per-quadrant-per-component deductions for capping
+  const reviewScores = await ctx.db
+    .query("reviewScores")
+    .withIndex("by_moduleId_version", (q) =>
+      q.eq("moduleId", moduleId).eq("version", version)
+    )
+    .collect();
+
+  // Build per-component quadrant deduction map:
+  // component (reviewPass) -> quadrantId -> { maxPoints, score, deduction }
+  const componentQuadrantDeductions = new Map<string, Map<string, { maxPoints: number; score: number; deduction: number }>>();
+  
+  for (const rs of reviewScores) {
+    const component = rs.reviewPass; // "spine", "applet_1", etc.
+    const quadrantMap = new Map<string, { maxPoints: number; score: number; deduction: number }>();
+    
+    for (const qs of rs.quadrantScores) {
+      quadrantMap.set(qs.quadrantId, {
+        maxPoints: qs.maxPoints,
+        score: qs.score,
+        deduction: Math.max(0, qs.maxPoints - qs.score),
+      });
+    }
+    componentQuadrantDeductions.set(component, quadrantMap);
+  }
+
+  // Filter rejected initial-review recs (exclude corrections_check and custom_review)
   const rejectedInitialRecs = recs.filter(
     (r) =>
       r.reviewStatus === "rejected" &&
       r.sourcePass !== "corrections_check" &&
       r.sourcePass !== "custom_review"
   );
-  const addBackPoints = rejectedInitialRecs.reduce(
-    (sum, r) => sum + (r.pointsRecoverable ?? 0),
-    0
-  );
 
-  let adjustedScore: number | undefined;
-  let scoreBand: string | undefined;
+  // Group rejected recs by component + quadrantId
+  // Key format: "component:quadrantId" (e.g., "spine:P", "applet_1:D")
+  const rejectedByComponentQuadrant = new Map<string, typeof rejectedInitialRecs>();
+  for (const r of rejectedInitialRecs) {
+    const component = r.component ?? "module";
+    const quadrantId = r.quadrantId ?? "GENERAL";
+    const key = `${component}:${quadrantId}`;
+    if (!rejectedByComponentQuadrant.has(key)) rejectedByComponentQuadrant.set(key, []);
+    rejectedByComponentQuadrant.get(key)!.push(r);
+  }
+
+  // Valid scoring quadrants (P, D, X, L) - these have deductions in reviewScores
+  const scoringQuadrants = new Set(["P", "D", "X", "L"]);
+  
+  // Calculate capped add-back per component+quadrant
+  // Also track total add-back per component for component score adjustment
+  const componentAddBacks = new Map<string, number>(); // component -> total capped add-back
+  let uncappedModuleAddBack = 0; // For module-wide and special quadrant recommendations
+  const quadrantAddBacksDetail: { component: string; quadrantId: string; raw: number; capped: number; deduction: number; cappedReason: string }[] = [];
+
+  rejectedByComponentQuadrant.forEach((qRecs, key) => {
+    const [component, quadrantId] = key.split(":");
+    const rawAddBack = qRecs.reduce((sum, r) => sum + (r.pointsRecoverable ?? 0), 0);
+    
+    // Determine if this should be capped or not
+    const isScoringQuadrant = scoringQuadrants.has(quadrantId);
+    const hasComponentScore = componentQuadrantDeductions.has(component);
+    
+    let cappedAddBack: number;
+    let deduction: number;
+    let cappedReason: string;
+    
+    if (hasComponentScore && isScoringQuadrant) {
+      // Component-level recommendation for a scoring quadrant - CAP IT
+      const quadrantMap = componentQuadrantDeductions.get(component)!;
+      const quadrantData = quadrantMap.get(quadrantId);
+      deduction = quadrantData?.deduction ?? 0;
+      cappedAddBack = Math.min(rawAddBack, deduction);
+      cappedReason = deduction > 0 ? "capped_at_deduction" : "no_deduction";
+      
+      // Track per-component totals
+      const currentTotal = componentAddBacks.get(component) ?? 0;
+      componentAddBacks.set(component, currentTotal + cappedAddBack);
+    } else {
+      // Module-wide (component="module") or special quadrant (GATE, AP, CC, etc.) - NO CAP
+      cappedAddBack = rawAddBack;
+      deduction = 0;
+      cappedReason = component === "module" ? "module_wide_no_cap" : "special_quadrant_no_cap";
+      
+      // Add to uncapped module total
+      uncappedModuleAddBack += rawAddBack;
+    }
+    
+    quadrantAddBacksDetail.push({ 
+      component, 
+      quadrantId, 
+      raw: rawAddBack, 
+      capped: cappedAddBack, 
+      deduction,
+      cappedReason,
+    });
+  });
+
+  // Calculate new component scores and overall score
+  let totalNewScore = 0;
+  let componentCount = 0;
+  const componentScoreAdjustments: { component: string; originalScore: number; addBack: number; newScore: number }[] = [];
+
+  for (const rs of reviewScores) {
+    const component = rs.reviewPass;
+    const originalScore = rs.totalPoints;
+    const addBack = componentAddBacks.get(component) ?? 0;
+    const newScore = Math.min(originalScore + addBack, 100);
+    
+    totalNewScore += newScore;
+    componentCount++;
+    componentScoreAdjustments.push({ component, originalScore, addBack, newScore });
+  }
+
+  // Calculate overall score as average of component scores, then add uncapped module add-back
+  const avgComponentScore = componentCount > 0 ? totalNewScore / componentCount : 0;
+  const adjustedScore = Math.min(Math.round(avgComponentScore + uncappedModuleAddBack), 100);
+
+  let scoreBand: string;
+  if (adjustedScore >= 90) scoreBand = "Ship-ready";
+  else if (adjustedScore >= 75) scoreBand = "Upgradeable";
+  else if (adjustedScore >= 50) scoreBand = "Rework";
+  else scoreBand = "Redesign";
+
   if (module && module.version === version) {
-    const currentScore = module.overallScore ?? 0;
-    adjustedScore = Math.min(Math.round(currentScore + addBackPoints), 100);
-
-    if (adjustedScore >= 90) scoreBand = "Ship-ready";
-    else if (adjustedScore >= 75) scoreBand = "Upgradeable";
-    else if (adjustedScore >= 50) scoreBand = "Rework";
-    else scoreBand = "Redesign";
-
     await ctx.db.patch(module._id, {
       status: "vinay_reviewed",
       overallScore: adjustedScore,
@@ -51,9 +152,25 @@ async function completeVinayReviewImpl(ctx: Pick<MutationCtx, "db">, moduleId: s
       updatedAt: new Date().toISOString(),
     });
   }
+  
   const accepted = recs.filter((r) => r.reviewStatus === "accepted").length;
   const rejected = recs.filter((r) => r.reviewStatus === "rejected").length;
-  return { accepted, rejected, total: recs.length, addBackPoints, adjustedScore, scoreBand };
+  const rawAddBack = rejectedInitialRecs.reduce((sum, r) => sum + (r.pointsRecoverable ?? 0), 0);
+  const totalCappedAddBack = Array.from(componentAddBacks.values()).reduce((sum, v) => sum + v, 0);
+  
+  return { 
+    accepted, 
+    rejected, 
+    total: recs.length, 
+    rawAddBack,
+    addBackPoints: totalCappedAddBack + uncappedModuleAddBack, 
+    cappedAddBack: totalCappedAddBack,
+    uncappedModuleAddBack,
+    adjustedScore, 
+    scoreBand,
+    componentScoreAdjustments,
+    quadrantAddBacks: quadrantAddBacksDetail,
+  };
 }
 
 // Batch-insert recommendations (called by Integrator or Reviewers)

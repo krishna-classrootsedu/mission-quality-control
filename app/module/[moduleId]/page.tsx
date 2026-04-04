@@ -256,7 +256,7 @@ export default function ModuleDetailPage() {
   const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
   const canPrivilegedMarkShipReady =
     (me?.role === "manager" || me?.role === "admin") &&
-    ["review_complete", "corrections_intake_complete", "corrections_review_complete"].includes(
+    ["review_complete", "vinay_reviewed", "corrections_intake_complete", "corrections_review_complete"].includes(
       moduleData.status
     );
   const recCount = recommendations?.length ?? 0;
