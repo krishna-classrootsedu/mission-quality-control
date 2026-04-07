@@ -125,7 +125,6 @@ export default function UploadPage() {
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
-  const spineSelected = !!spineParsed; // file chosen, may still be parsing
 
   async function parseFile(file: File): Promise<SourceSlide[]> {
     const uploadUrl = await generateUploadUrl();
@@ -470,54 +469,8 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Zone 1: Spine Deck Upload (hidden until module selected in corrections mode) */}
-          <div className={`p-4 pb-3 ${isCorrections ? "border-t border-stone-100" : ""}`} style={isCorrections && !selectedModule ? { display: "none" } : undefined}>
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Spine Deck</span>
-              <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
-            </div>
-            <div
-              className={`border-2 border-dashed rounded-lg px-4 text-center cursor-pointer transition-all ${
-                spineParsed && !spineParsed.error
-                  ? "border-stone-300 bg-stone-50/80 py-3"
-                  : spineParsed?.error
-                  ? "border-red-300 bg-red-50/50 py-3"
-                  : "border-stone-200 hover:border-stone-400 bg-stone-50/30 py-5"
-              }`}
-              onClick={() => spineFileRef.current?.click()}
-            >
-              <input ref={spineFileRef} type="file" accept=".pptx" onChange={handleSpineSelect} className="hidden" />
-              {spineParsed ? (
-                <div>
-                  <div className={`text-[13px] font-medium ${spineParsed.error ? "text-red-700" : "text-stone-700"}`}>{spineParsed.file.name}</div>
-                  {spineParsed.parsing && (
-                    <div className="flex items-center justify-center gap-2 mt-1 text-[11px] text-stone-400">
-                      <svg className="animate-spin h-3 w-3 text-stone-400" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Parsing slides...
-                    </div>
-                  )}
-                  {spineReady && (
-                    <div className="text-[11px] text-stone-500 mt-1">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
-                  )}
-                  {spineParsed.error && <div className="text-[11px] text-red-600 mt-1">{spineParsed.error}</div>}
-                </div>
-              ) : (
-                <div>
-                  <svg className="w-6 h-6 text-stone-300 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                  <div className="text-[13px] text-stone-500">Click to upload spine deck</div>
-                  <div className="text-[11px] text-stone-300 mt-0.5">.pptx format only &middot; applet storyboards go in the next step</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Zone 2: Module Details — appears immediately after file selection (new module only) */}
-          {spineSelected && !isCorrections && (
+          {/* Zone 1: Module Details — always visible for new module (fill context first, then upload) */}
+          {!isCorrections && (
             <>
               <div className="border-t border-stone-100 mx-4" />
               <div className="p-4 pt-3 space-y-3">
@@ -560,14 +513,14 @@ export default function UploadPage() {
                         <option value="__manual__">Type manually</option>
                       </select>
                     ) : (
-                      <div className="flex gap-1">
+                      <div>
                         <input type="number" min={1} value={chapterNumber}
                           onChange={(e) => { setChapterNumber(e.target.value === "" ? "" : parseInt(e.target.value)); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); }}
                           placeholder="2"
                           className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
-                        {curriculumMode === "manual" && curriculumChapters && curriculumChapters.length > 0 && (
-                          <button type="button" onClick={() => { setCurriculumMode("auto"); setChapterNumber(""); setModuleNumber(""); }}
-                            className="shrink-0 px-2 text-[10px] text-stone-400 hover:text-stone-600" title="Switch to dropdown">&#x25BC;</button>
+                        {curriculumChapters && curriculumChapters.length > 0 && (
+                          <button type="button" onClick={() => { setCurriculumMode("auto"); setChapterNumber(""); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); }}
+                            className="text-[10px] text-emerald-600 hover:text-emerald-700 mt-0.5">Select from curriculum</button>
                         )}
                       </div>
                     )}
@@ -591,10 +544,16 @@ export default function UploadPage() {
                         <option value="__manual__">Type manually</option>
                       </select>
                     ) : (
-                      <input type="number" min={1} value={moduleNumber}
-                        onChange={(e) => setModuleNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
-                        placeholder="1"
-                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                      <div>
+                        <input type="number" min={1} value={moduleNumber}
+                          onChange={(e) => setModuleNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
+                          placeholder="1"
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                        {curriculumModules && curriculumModules.length > 0 && (
+                          <button type="button" onClick={() => { setCurriculumMode("auto"); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); }}
+                            className="text-[10px] text-emerald-600 hover:text-emerald-700 mt-0.5">Select from curriculum</button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -644,6 +603,52 @@ export default function UploadPage() {
               </div>
             </>
           )}
+
+          {/* Zone 2: Spine Deck Upload */}
+          <div className={`p-4 pb-3 ${!isCorrections ? "border-t border-stone-100 mx-4" : ""}`} style={isCorrections && !selectedModule ? { display: "none" } : undefined}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Spine Deck</span>
+              <span className="text-[10px] font-semibold text-red-400 uppercase tracking-[0.06em]">required</span>
+            </div>
+            <div
+              className={`border-2 border-dashed rounded-lg px-4 text-center cursor-pointer transition-all ${
+                spineParsed && !spineParsed.error
+                  ? "border-stone-300 bg-stone-50/80 py-3"
+                  : spineParsed?.error
+                  ? "border-red-300 bg-red-50/50 py-3"
+                  : "border-stone-200 hover:border-stone-400 bg-stone-50/30 py-5"
+              }`}
+              onClick={() => spineFileRef.current?.click()}
+            >
+              <input ref={spineFileRef} type="file" accept=".pptx" onChange={handleSpineSelect} className="hidden" />
+              {spineParsed ? (
+                <div>
+                  <div className={`text-[13px] font-medium ${spineParsed.error ? "text-red-700" : "text-stone-700"}`}>{spineParsed.file.name}</div>
+                  {spineParsed.parsing && (
+                    <div className="flex items-center justify-center gap-2 mt-1 text-[11px] text-stone-400">
+                      <svg className="animate-spin h-3 w-3 text-stone-400" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Parsing slides...
+                    </div>
+                  )}
+                  {spineReady && (
+                    <div className="text-[11px] text-stone-500 mt-1">{"\u2713"} {spineParsed.slides.length} slides found &middot; Click to change</div>
+                  )}
+                  {spineParsed.error && <div className="text-[11px] text-red-600 mt-1">{spineParsed.error}</div>}
+                </div>
+              ) : (
+                <div>
+                  <svg className="w-6 h-6 text-stone-300 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  <div className="text-[13px] text-stone-500">Click to upload spine deck</div>
+                  <div className="text-[11px] text-stone-300 mt-0.5">.pptx format only &middot; applet storyboards go in the next step</div>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Error */}
           {error && (
