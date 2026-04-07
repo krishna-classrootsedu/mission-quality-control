@@ -6,6 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
+import ScoreBandBadge from "./ScoreBandBadge";
+
+const BAND_LEGEND = [
+  { key: "ship_ready", range: "90–100" },
+  { key: "upgradeable", range: "75–89" },
+  { key: "rework", range: "50–74" },
+  { key: "redesign", range: "0–49" },
+];
 
 type NavLink = { href: string; label: string; roles?: string[] };
 
@@ -28,6 +36,7 @@ export default function NavBar() {
   const resetPasswordWithToken = useMutation(api.users.resetPasswordWithToken);
   const changeFirstLoginPassword = useMutation(api.users.changeFirstLoginPassword);
 
+  const [showLegend, setShowLegend] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"signIn" | "resetWithToken">("signIn");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -180,6 +189,32 @@ export default function NavBar() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Score band legend popover */}
+            <div className="relative">
+              <button
+                onClick={() => setShowLegend(!showLegend)}
+                className="w-6 h-6 rounded-full border border-stone-200 text-stone-400 text-[11px] font-medium hover:bg-stone-100 hover:text-stone-600 transition-colors flex items-center justify-center"
+                title="Score bands"
+              >
+                ?
+              </button>
+              {showLegend && (
+                <div className="absolute right-0 top-8 bg-white border border-stone-200 rounded-lg shadow-lg p-3 z-30 w-52">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold text-stone-600">Score Bands</span>
+                    <button onClick={() => setShowLegend(false)} className="text-stone-300 hover:text-stone-500 text-xs">&times;</button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {BAND_LEGEND.map((b) => (
+                      <div key={b.key} className="flex items-center justify-between">
+                        <ScoreBandBadge band={b.key} />
+                        <span className="text-[10px] text-stone-400 font-mono">{b.range}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {!isLoading && isAuthenticated && me?.role && (
               <span className="text-[11px] text-stone-500 uppercase tracking-[0.06em]">
                 {me.role.replace("_", " ")}

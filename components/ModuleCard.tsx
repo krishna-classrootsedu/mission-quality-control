@@ -6,16 +6,9 @@ import { motion } from "framer-motion";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ModuleBoardItem } from "@/lib/types";
-import ScoreBandBadge from "./ScoreBandBadge";
+import ScoreBandBadge, { BAND_TEXT_COLORS } from "./ScoreBandBadge";
 import HealthBar from "./HealthBar";
 import DeleteModuleModal from "./DeleteModuleModal";
-
-const SCORE_COLORS: Record<string, string> = {
-  "Ship-ready": "text-emerald-700",
-  "Upgradeable": "text-amber-700",
-  "Rework": "text-orange-600",
-  "Redesign": "text-red-600",
-};
 
 export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardItem; index?: number }) {
   const [showDelete, setShowDelete] = useState(false);
@@ -65,7 +58,7 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
             ) : module.overallPercentage !== null ? (
               <div className="space-y-1">
                 {module.scoreBand && <ScoreBandBadge band={module.scoreBand} />}
-                <span className={`font-display text-2xl block ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
+                <span className={`font-display text-2xl block ${BAND_TEXT_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
                   {module.overallPercentage}%
                 </span>
               </div>

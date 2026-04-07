@@ -9,6 +9,14 @@ const BAND_STYLES: Record<string, string> = {
   reframe: "bg-red-50 text-red-600 border-red-200",
 };
 
+// Exported so ModuleCard can color the percentage to match the badge
+export const BAND_TEXT_COLORS: Record<string, string> = {
+  "Ship-ready": "text-emerald-700",
+  "Upgradeable": "text-amber-700",
+  "Rework": "text-orange-600",
+  "Redesign": "text-red-600",
+};
+
 const BAND_LABELS: Record<string, string> = {
   ship_ready: "Ship-ready",
   upgradeable: "Upgradeable",
