@@ -7,7 +7,6 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ModuleBoardItem } from "@/lib/types";
 import ScoreBandBadge from "./ScoreBandBadge";
-import StageBadge from "./StageBadge";
 import HealthBar from "./HealthBar";
 import DeleteModuleModal from "./DeleteModuleModal";
 
@@ -33,6 +32,7 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
       >
         <Link href={`/module/${module.moduleId}`}>
           <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-4 hover:shadow-card hover:border-stone-300 hover:-translate-y-px transition-all cursor-pointer space-y-2.5">
+            {/* Row 1: Title + version */}
             <div className="flex items-start justify-between gap-2">
               <h3 className="text-[13px] font-semibold text-stone-800 leading-snug line-clamp-1">
                 {module.title}
@@ -40,12 +40,10 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
               <span className="text-[11px] font-mono text-stone-400 shrink-0 mt-0.5">v{module.version}</span>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] text-stone-400">Status</span>
-              <StageBadge status={module.status} />
-              <HealthBar updatedAt={module.updatedAt} />
-            </div>
+            {/* Row 2: Score band label */}
+            {module.scoreBand && <ScoreBandBadge band={module.scoreBand} />}
 
+            {/* Row 3: Score */}
             {module.corrections && module.corrections.totalRecs > 0 ? (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5">
@@ -67,45 +65,46 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
                 </div>
               </div>
             ) : module.overallPercentage !== null ? (
-              <div className="flex items-center gap-2.5">
-                <span className={`font-display text-2xl ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
-                  {module.overallPercentage}%
-                </span>
-                <ScoreBandBadge band={module.scoreBand} />
-              </div>
+              <span className={`font-display text-2xl ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
+                {module.overallPercentage}%
+              </span>
             ) : null}
 
-            {(module.spineComplete || module.totalApplets > 0) && (
-              <div className="flex gap-1.5">
-                <CompletionDot label="S" done={module.spineComplete} title="Spine" />
-                {Array.from({ length: module.totalApplets }, (_, i) => (
-                  <CompletionDot
-                    key={i}
-                    label={`A${i + 1}`}
-                    done={i < module.completedAppletReviews}
-                    title={`Applet ${i + 1}`}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Row 4: Component dots + rec count */}
+            <div className="flex items-center justify-between">
+              {(module.spineComplete || module.totalApplets > 0) ? (
+                <div className="flex gap-1.5">
+                  <CompletionDot label="S" done={module.spineComplete} title="Spine" />
+                  {Array.from({ length: module.totalApplets }, (_, i) => (
+                    <CompletionDot
+                      key={i}
+                      label={`A${i + 1}`}
+                      done={i < module.completedAppletReviews}
+                      title={`Applet ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              ) : <div />}
+              {module.recommendationCounts && (
+                <span className="text-[10px] text-stone-400">
+                  {module.recommendationCounts.pending > 0
+                    ? `${module.recommendationCounts.pending}/${module.recommendationCounts.total} pending`
+                    : `${module.recommendationCounts.total} reviewed`}
+                </span>
+              )}
+            </div>
 
-            {module.recommendationCounts && (
-              <div className="text-[11px] text-stone-400">
-                {module.recommendationCounts.pending > 0 ? (
-                  <span>{module.recommendationCounts.pending} pending / {module.recommendationCounts.total} recommendations</span>
-                ) : (
-                  <span className="text-stone-600">All {module.recommendationCounts.total} reviewed</span>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
+            {/* Row 5: Footer — hierarchy, age, assignee */}
+            <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5 border-t border-stone-100">
               <span>
                 G{module.grade}
                 {module.chapterNumber != null && ` · Ch${module.chapterNumber}`}
                 {module.moduleNumber != null && ` · M${module.moduleNumber}`}
               </span>
-              {module.submittedBy && <span>{module.submittedBy}</span>}
+              <div className="flex items-center gap-2">
+                <HealthBar updatedAt={module.updatedAt} />
+                {module.submittedBy && <span>{module.submittedBy}</span>}
+              </div>
             </div>
           </div>
         </Link>
