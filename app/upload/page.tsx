@@ -78,6 +78,7 @@ export default function UploadPage() {
   const [spineParsed, setSpineParsed] = useState<ParsedFile | null>(null);
   const [applets, setApplets] = useState<AppletEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [submitProgress, setSubmitProgress] = useState("");
   const [error, setError] = useState("");
   const [autoDetected, setAutoDetected] = useState(false);
@@ -207,7 +208,7 @@ export default function UploadPage() {
   function buildFlowDescription() { return describeModuleFlow(buildSequencedSlides()); }
 
   async function handleSubmit() {
-    if (!spineParsed) return;
+    if (!spineParsed || submitting || submitted) return;
     setError(""); setSubmitting(true);
     try {
       setSubmitProgress("Uploading spine deck...");
@@ -241,6 +242,7 @@ export default function UploadPage() {
         const result = await submitCorrections({
           moduleId: selectedModule.moduleId, sourceFiles, slides,
         });
+        setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
         router.push(`/module/${result.moduleId}`);
       } else {
@@ -253,6 +255,7 @@ export default function UploadPage() {
           topic: topic || undefined,
           submittedBy: submittedBy.trim(), sourceFiles, slides,
         });
+        setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
         router.push(`/module/${moduleResult.moduleId}`);
       }
@@ -738,11 +741,11 @@ export default function UploadPage() {
           {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{error}</div>}
 
           <div className="flex justify-between pt-1">
-            <button type="button" disabled={submitting} onClick={() => { setError(""); setStep(2); }}
+            <button type="button" disabled={submitting || submitted} onClick={() => { setError(""); setStep(2); }}
               className="px-5 py-2 border border-stone-200 text-stone-600 rounded-lg text-[13px] font-medium hover:bg-stone-50 disabled:opacity-40 transition-all">
               &larr; Back
             </button>
-            <button type="button" disabled={submitting} onClick={handleSubmit}
+            <button type="button" disabled={submitting || submitted} onClick={handleSubmit}
               className="px-6 py-2 bg-stone-900 text-white rounded-lg text-[13px] font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
               {submitting ? submitProgress : isCorrections ? "Submit Corrections" : "Submit for Review"}
             </button>

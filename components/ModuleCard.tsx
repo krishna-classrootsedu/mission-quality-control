@@ -11,6 +11,13 @@ import StageBadge from "./StageBadge";
 import HealthBar from "./HealthBar";
 import DeleteModuleModal from "./DeleteModuleModal";
 
+const SCORE_COLORS: Record<string, string> = {
+  "Ship-ready": "text-emerald-700",
+  "Upgradeable": "text-amber-700",
+  "Rework": "text-orange-600",
+  "Redesign": "text-red-600",
+};
+
 export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardItem; index?: number }) {
   const [showDelete, setShowDelete] = useState(false);
   const me = useQuery(api.users.me);
@@ -34,6 +41,7 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-stone-400">Status</span>
               <StageBadge status={module.status} />
               <HealthBar updatedAt={module.updatedAt} />
             </div>
@@ -60,7 +68,7 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
               </div>
             ) : module.overallPercentage !== null ? (
               <div className="flex items-center gap-2.5">
-                <span className="font-display text-2xl text-stone-900">
+                <span className={`font-display text-2xl ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
                   {module.overallPercentage}%
                 </span>
                 <ScoreBandBadge band={module.scoreBand} />

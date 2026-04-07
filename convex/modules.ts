@@ -702,6 +702,7 @@ export const markShipReady = mutation({
     const now = new Date().toISOString();
     await ctx.db.patch(module._id, {
       status: "ship_ready",
+      scoreBand: "Ship-ready",
       updatedAt: now,
       completedAt: now,
     });
@@ -810,11 +811,12 @@ export const submitCorrections = mutation({
     ]);
     const now = new Date().toISOString();
 
-    const existing = await ctx.db
+    const allVersions = await ctx.db
       .query("modules")
       .withIndex("by_moduleId", (q) => q.eq("moduleId", args.moduleId))
       .order("desc")
-      .first();
+      .collect();
+    const existing = allVersions.find((m) => !m.deleted) ?? null;
 
     if (!existing) throw new Error(`Module not found: ${args.moduleId}`);
     if (existing.deleted) throw new Error("Module has been deleted");

@@ -1,11 +1,11 @@
 "use client";
 
 const BAND_STYLES: Record<string, string> = {
-  ship_ready: "bg-stone-800 text-white border-stone-800",
-  upgradeable: "bg-stone-100 text-stone-700 border-stone-300",
-  rework: "bg-stone-100 text-stone-500 border-stone-200",
+  ship_ready: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  upgradeable: "bg-amber-50 text-amber-700 border-amber-200",
+  rework: "bg-orange-50 text-orange-600 border-orange-200",
   redesign: "bg-red-50 text-red-600 border-red-200",
-  re_architect: "bg-stone-100 text-stone-500 border-stone-200",
+  re_architect: "bg-orange-50 text-orange-600 border-orange-200",
   reframe: "bg-red-50 text-red-600 border-red-200",
 };
 
