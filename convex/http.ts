@@ -482,6 +482,27 @@ http.route({
   }),
 });
 
+// Curriculum context for agents — all modules in a chapter with LOs
+http.route({
+  path: "/query/curriculum-context",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
+    try {
+      const url = new URL(request.url);
+      const gradeParam = url.searchParams.get("grade");
+      const chapterParam = url.searchParams.get("chapterNumber");
+      if (!gradeParam || !chapterParam) return jsonResponse({ error: "Missing grade or chapterNumber" }, 400);
+      const grade = parseInt(gradeParam, 10);
+      const chapterNumber = parseInt(chapterParam, 10);
+      const context = await ctx.runQuery(internal.curriculumMap.internalChapterContext, { grade, chapterNumber });
+      return jsonResponse(context);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // CORS preflight for all routes
 // ---------------------------------------------------------------------------
@@ -497,7 +518,7 @@ const allPaths = [
   "/query/modules", "/query/module-detail", "/query/parsed-slides",
   "/query/review-scores", "/query/recommendations", "/query/flow-map",
   "/query/pipeline-summary", "/query/activity", "/query/accepted-feedback",
-  "/query/corrections-diff",
+  "/query/corrections-diff", "/query/curriculum-context",
 ];
 
 for (const path of allPaths) {

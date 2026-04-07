@@ -12,6 +12,7 @@ import type * as agentActivity from "../agentActivity.js";
 import type * as auth from "../auth.js";
 import type * as board from "../board.js";
 import type * as correctionsDiff from "../correctionsDiff.js";
+import type * as curriculumMap from "../curriculumMap.js";
 import type * as deleteModule from "../deleteModule.js";
 import type * as flowMap from "../flowMap.js";
 import type * as gatekeeper from "../gatekeeper.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   board: typeof board;
   correctionsDiff: typeof correctionsDiff;
+  curriculumMap: typeof curriculumMap;
   deleteModule: typeof deleteModule;
   flowMap: typeof flowMap;
   gatekeeper: typeof gatekeeper;

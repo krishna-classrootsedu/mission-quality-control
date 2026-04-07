@@ -356,6 +356,7 @@ export const submitModuleWithFlow = mutation({
     tp: v.optional(v.string()),
     phase: v.optional(v.string()),
     topic: v.optional(v.string()),
+    curriculumEntryId: v.optional(v.id("curriculumMap")),
     submittedBy: v.string(),
     sourceFiles: v.array(v.object({
       filename: v.string(),
@@ -410,6 +411,7 @@ export const submitModuleWithFlow = mutation({
       tp: args.tp,
       phase: args.phase,
       topic: args.topic,
+      curriculumEntryId: args.curriculumEntryId,
       slideCount: totalSlides,
       sourceFiles: args.sourceFiles,
       status: "intake_complete",

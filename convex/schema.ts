@@ -108,11 +108,41 @@ export default defineSchema({
     submittedAt: v.string(),
     updatedAt: v.string(),
     completedAt: v.optional(v.string()),
+    // Link to curriculum map entry (if module was created from curriculum)
+    curriculumEntryId: v.optional(v.id("curriculumMap")),
   })
     .index("by_moduleId", ["moduleId"])
     .index("by_status", ["status"])
     .index("by_updatedAt", ["updatedAt"])
     .index("by_submittedByUserId", ["submittedByUserId"]),
+
+  // Curriculum map — pre-defined curriculum hierarchy (input table)
+  curriculumMap: defineTable({
+    // Hierarchy
+    grade: v.number(),
+    chapterNumber: v.number(),
+    chapterName: v.string(),
+    moduleNumber: v.number(),
+    moduleName: v.string(),
+    // Learning content
+    learningOutcomes: v.string(),
+    // Classification (backfillable)
+    topic: v.optional(v.string()),
+    cp: v.optional(v.string()),
+    tp: v.optional(v.string()),
+    phase: v.optional(v.string()),
+    // Future knowledgeLedger-aligned fields (backfillable)
+    prerequisites: v.optional(v.string()),
+    keyVocabulary: v.optional(v.string()),
+    conceptsCovered: v.optional(v.string()),
+    // Metadata
+    createdAt: v.string(),
+    updatedAt: v.string(),
+    createdBy: v.optional(v.id("users")),
+  })
+    .index("by_grade_chapter_module", ["grade", "chapterNumber", "moduleNumber"])
+    .index("by_grade_chapter", ["grade", "chapterNumber"])
+    .index("by_grade", ["grade"]),
 
   // Reader output — one per module+version
   intakeResults: defineTable({

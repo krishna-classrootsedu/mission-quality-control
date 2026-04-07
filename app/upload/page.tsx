@@ -75,6 +75,9 @@ export default function UploadPage() {
   const [moduleNumber, setModuleNumber] = useState<number | "">("");
   const [topic, setTopic] = useState("");
   const [submittedBy, setSubmittedBy] = useState("");
+  const [curriculumMode, setCurriculumMode] = useState<"auto" | "manual">("auto");
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculumMap"> | null>(null);
+  const [curriculumFilled, setCurriculumFilled] = useState(false);
   const [spineParsed, setSpineParsed] = useState<ParsedFile | null>(null);
   const [applets, setApplets] = useState<AppletEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +88,16 @@ export default function UploadPage() {
 
   const isCorrections = mode === "corrections";
 
+  // Curriculum cascading queries
+  const curriculumChapters = useQuery(
+    api.curriculumMap.listByGrade,
+    mode === "new" ? { grade } : "skip"
+  );
+  const curriculumModules = useQuery(
+    api.curriculumMap.listByGradeChapter,
+    mode === "new" && chapterNumber !== "" ? { grade, chapterNumber: chapterNumber as number } : "skip"
+  );
+
   useEffect(() => {
     if (mode !== "new") return;
     if (submittedBy.trim().length > 0) return;
@@ -92,6 +105,23 @@ export default function UploadPage() {
       setSubmittedBy(me.name.trim());
     }
   }, [me?.name, mode, submittedBy]);
+
+  // Auto-fill from curriculum when a matching entry exists
+  useEffect(() => {
+    if (mode !== "new" || curriculumMode !== "auto" || !curriculumModules || moduleNumber === "") return;
+    const match = curriculumModules.find((m) => m.moduleNumber === moduleNumber);
+    if (match) {
+      setTitle(match.moduleName);
+      setLearningObjective(match.learningOutcomes);
+      setChapterName(match.chapterName);
+      if (match.topic) setTopic(match.topic);
+      setSelectedCurriculumId(match._id);
+      setCurriculumFilled(true);
+    } else {
+      setSelectedCurriculumId(null);
+      setCurriculumFilled(false);
+    }
+  }, [curriculumModules, moduleNumber, mode, curriculumMode]);
 
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
@@ -143,6 +173,7 @@ export default function UploadPage() {
       setChapterNumber(parseInt(match[2]));
       setModuleNumber(parseInt(match[3]));
       setAutoDetected(true);
+      setCurriculumMode("auto");
     } else {
       setAutoDetected(false);
     }
@@ -253,6 +284,7 @@ export default function UploadPage() {
           chapterName: chapterName.trim() || undefined,
           moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
           topic: topic || undefined,
+          curriculumEntryId: selectedCurriculumId ?? undefined,
           submittedBy: submittedBy.trim(), sourceFiles, slides,
         });
         setSubmitted(true);
@@ -489,35 +521,81 @@ export default function UploadPage() {
             <>
               <div className="border-t border-stone-100 mx-4" />
               <div className="p-4 pt-3 space-y-3">
-                {/* Auto-fill badge */}
-                {autoDetected && (
+                {/* Auto-fill badges */}
+                {(autoDetected || curriculumFilled) && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-[0.06em]">Auto-filled from filename</span>
+                    {autoDetected && <span className="text-[10px] font-medium text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-[0.06em]">Auto-filled from filename</span>}
+                    {curriculumFilled && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-[0.06em]">From curriculum</span>}
                   </div>
                 )}
 
-                {/* Row 1: Grade · Chapter # · Module # */}
+                {/* Row 1: Grade · Chapter · Module (cascading dropdowns with manual fallback) */}
                 <div className="grid grid-cols-3 gap-2.5">
                   <div>
                     <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Grade *</label>
-                    <select value={grade} onChange={(e) => setGrade(Number(e.target.value))}
+                    <select value={grade} onChange={(e) => { setGrade(Number(e.target.value)); setChapterNumber(""); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); setCurriculumMode("auto"); }}
                       className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
                       {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Chapter # *</label>
-                    <input type="number" min={1} value={chapterNumber}
-                      onChange={(e) => setChapterNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
-                      placeholder="2"
-                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                    {curriculumMode === "auto" && curriculumChapters && curriculumChapters.length > 0 ? (
+                      <select
+                        value={chapterNumber}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__manual__") { setCurriculumMode("manual"); setChapterNumber(""); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); return; }
+                          setChapterNumber(val === "" ? "" : parseInt(val));
+                          setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false);
+                          const ch = curriculumChapters.find((c) => c.chapterNumber === parseInt(val));
+                          if (ch) setChapterName(ch.chapterName);
+                        }}
+                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                      >
+                        <option value="">Select...</option>
+                        {curriculumChapters.map((ch) => (
+                          <option key={ch.chapterNumber} value={ch.chapterNumber}>Ch{ch.chapterNumber} — {ch.chapterName}</option>
+                        ))}
+                        <option value="__manual__">Type manually</option>
+                      </select>
+                    ) : (
+                      <div className="flex gap-1">
+                        <input type="number" min={1} value={chapterNumber}
+                          onChange={(e) => { setChapterNumber(e.target.value === "" ? "" : parseInt(e.target.value)); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); }}
+                          placeholder="2"
+                          className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                        {curriculumMode === "manual" && curriculumChapters && curriculumChapters.length > 0 && (
+                          <button type="button" onClick={() => { setCurriculumMode("auto"); setChapterNumber(""); setModuleNumber(""); }}
+                            className="shrink-0 px-2 text-[10px] text-stone-400 hover:text-stone-600" title="Switch to dropdown">&#x25BC;</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Module # *</label>
-                    <input type="number" min={1} value={moduleNumber}
-                      onChange={(e) => setModuleNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
-                      placeholder="1"
-                      className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                    {curriculumMode === "auto" && curriculumModules && curriculumModules.length > 0 ? (
+                      <select
+                        value={moduleNumber}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__manual__") { setCurriculumMode("manual"); setModuleNumber(""); setSelectedCurriculumId(null); setCurriculumFilled(false); return; }
+                          setModuleNumber(val === "" ? "" : parseInt(val));
+                        }}
+                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10"
+                      >
+                        <option value="">Select...</option>
+                        {curriculumModules.map((m) => (
+                          <option key={m.moduleNumber} value={m.moduleNumber}>M{m.moduleNumber} — {m.moduleName}</option>
+                        ))}
+                        <option value="__manual__">Type manually</option>
+                      </select>
+                    ) : (
+                      <input type="number" min={1} value={moduleNumber}
+                        onChange={(e) => setModuleNumber(e.target.value === "" ? "" : parseInt(e.target.value))}
+                        placeholder="1"
+                        className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-shadow" />
+                    )}
                   </div>
                 </div>
 
