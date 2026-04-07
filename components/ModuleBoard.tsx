@@ -4,6 +4,14 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { BOARD_COLUMNS, BoardColumn, ModuleBoardItem } from "@/lib/types";
 import ModuleBoardColumn from "./ModuleBoardColumn";
+import ScoreBandBadge from "./ScoreBandBadge";
+
+const BAND_LEGEND = [
+  { key: "ship_ready", range: "90–100" },
+  { key: "upgradeable", range: "75–89" },
+  { key: "rework", range: "50–74" },
+  { key: "redesign", range: "0–49" },
+];
 
 export default function ModuleBoard() {
   const me = useQuery(api.users.me);
@@ -39,11 +47,24 @@ export default function ModuleBoard() {
   }
 
   return (
-    <div className="flex items-start gap-3 h-full overflow-x-auto overflow-y-hidden px-5 py-4">
-      {BOARD_COLUMNS.map((col) => (
-        <ModuleBoardColumn key={col} column={col} modules={grouped.get(col) ?? []} />
-      ))}
-      <div className="flex-shrink-0 w-1" />
+    <div className="flex flex-col h-full">
+      {/* Score band legend */}
+      <div className="flex items-center gap-4 px-5 pt-3 pb-2 flex-shrink-0">
+        <span className="text-[11px] text-stone-400 font-medium">Score bands:</span>
+        {BAND_LEGEND.map((b) => (
+          <div key={b.key} className="flex items-center gap-1.5">
+            <ScoreBandBadge band={b.key} />
+            <span className="text-[10px] text-stone-400">{b.range}</span>
+          </div>
+        ))}
+      </div>
+      {/* Board columns */}
+      <div className="flex items-start gap-3 flex-1 overflow-x-auto overflow-y-hidden px-5 pb-4">
+        {BOARD_COLUMNS.map((col) => (
+          <ModuleBoardColumn key={col} column={col} modules={grouped.get(col) ?? []} />
+        ))}
+        <div className="flex-shrink-0 w-1" />
+      </div>
     </div>
   );
 }
