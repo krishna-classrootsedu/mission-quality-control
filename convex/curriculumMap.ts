@@ -186,7 +186,7 @@ export const bulkImportCSV = mutation({
     ),
   },
   handler: async (ctx, { rows }) => {
-    const user = await requireAnyRole(ctx, ["admin"]);
+    const user = await requireAnyRole(ctx, ["manager", "admin"]);
     const now = new Date().toISOString();
     let inserted = 0;
     let updated = 0;

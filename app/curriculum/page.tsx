@@ -263,7 +263,7 @@ export default function CurriculumPage() {
             <option value="all">All Grades</option>
             {GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}
           </select>
-          {isAdmin && (
+          {canEdit && (
             <button onClick={() => setShowImport(!showImport)}
               className="px-3 py-1.5 text-xs font-medium bg-stone-800 text-white rounded-md hover:bg-stone-700 transition-colors">
               Import CSV
@@ -281,7 +281,7 @@ export default function CurriculumPage() {
       )}
 
       {/* ── CSV Import Panel (slides down) ── */}
-      {showImport && isAdmin && (
+      {showImport && canEdit && (
         <div className="shrink-0 mx-6 mt-2 bg-white rounded-lg border border-stone-200 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-stone-700">Import CSV</h2>
@@ -289,8 +289,15 @@ export default function CurriculumPage() {
               className="text-xs text-stone-400 hover:text-stone-600">Cancel</button>
           </div>
           <p className="text-[11px] text-stone-400">
-            Required: grade, chapterNumber, chapterName, moduleNumber, moduleName, learningOutcomes.
-            Optional: topic, cp, tp, phase, prerequisites, keyVocabulary, conceptsCovered.
+            Upload a CSV with your curriculum data.{" "}
+            <button type="button" onClick={() => {
+              const headers = "grade,chapterNumber,chapterName,moduleNumber,moduleName,learningOutcomes,topic,cp,tp,phase,prerequisites,keyVocabulary,conceptsCovered";
+              const blob = new Blob([headers + "\n"], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = "curriculum-template.csv"; a.click();
+              URL.revokeObjectURL(url);
+            }} className="text-emerald-600 hover:text-emerald-700 underline underline-offset-2">Download template CSV</button>
           </p>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} className="text-xs text-stone-600" />
 
