@@ -40,12 +40,10 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
               <span className="text-[11px] font-mono text-stone-400 shrink-0 mt-0.5">v{module.version}</span>
             </div>
 
-            {/* Row 2: Score band label */}
-            {module.scoreBand && <ScoreBandBadge band={module.scoreBand} />}
-
-            {/* Row 3: Score */}
+            {/* Row 2: Score band + percentage */}
             {module.corrections && module.corrections.totalRecs > 0 ? (
               <div className="space-y-1">
+                {module.scoreBand && <ScoreBandBadge band={module.scoreBand} />}
                 <div className="flex items-center gap-1.5">
                   <span className="font-display text-lg text-stone-400">{module.corrections.previousScore}%</span>
                   <span className="text-stone-300 text-sm">&rarr;</span>
@@ -65,9 +63,12 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
                 </div>
               </div>
             ) : module.overallPercentage !== null ? (
-              <span className={`font-display text-2xl ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
-                {module.overallPercentage}%
-              </span>
+              <div className="space-y-1">
+                {module.scoreBand && <ScoreBandBadge band={module.scoreBand} />}
+                <span className={`font-display text-2xl block ${SCORE_COLORS[module.scoreBand ?? ""] ?? "text-stone-900"}`}>
+                  {module.overallPercentage}%
+                </span>
+              </div>
             ) : null}
 
             {/* Row 4: Component dots + rec count */}
