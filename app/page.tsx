@@ -12,7 +12,7 @@ function HomeContent() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/board");
+      router.replace("/tracker");
     }
   }, [isLoading, isAuthenticated, router]);
 

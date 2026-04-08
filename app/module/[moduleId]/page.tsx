@@ -14,12 +14,14 @@ import SpineTabContent from "@/components/SpineTabContent";
 import AppletTabContent from "@/components/AppletTabContent";
 import VerdictBanner from "@/components/VerdictBanner";
 import InlineRecommendation from "@/components/InlineRecommendation";
-import CustomReviewForm from "@/components/CustomReviewForm";
+import ModuleSidebar from "@/components/ModuleSidebar";
+import CustomRecsPanel from "@/components/CustomRecsPanel";
 
 export default function ModuleDetailPage() {
   const params = useParams();
   const moduleId = params.moduleId as string;
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeSection, setActiveSection] = useState("overview");
+  const [autoOpenCustomForm, setAutoOpenCustomForm] = useState(false);
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
@@ -100,38 +102,24 @@ export default function ModuleDetailPage() {
   const finalizeCorrections = useMutation(api.modules.finalizeCorrectionsReview);
   const markShipReadyMutation = useMutation(api.modules.markShipReady);
 
-  const tabs = useMemo(() => {
-    const baseTabs = [
-      { key: "overview", label: "Overview" },
-      { key: "flow", label: "Flow" },
-      { key: "custom", label: "Custom" },
-      { key: "global", label: "Global" },
-      { key: "spine", label: "Spine" },
-    ];
-
-    const appletKeys: { key: string; label: string }[] = [];
+  // Build applet keys for sidebar (same logic as before, now for sidebar rendering)
+  const appletKeys = useMemo(() => {
+    const keys: { key: string; label: string }[] = [];
     if (moduleData?.sourceFiles) {
       for (const sf of moduleData.sourceFiles) {
         if (sf.type === "applet") {
           const component = sourceFileToComponent(sf.label);
-          appletKeys.push({
-            key: component,
-            label: sf.label.replace(/^A/, "Applet "),
-          });
+          keys.push({ key: component, label: sf.label.replace(/^A/, "Applet ") });
         }
       }
     } else if (reviewScores) {
       for (const rs of reviewScores) {
         if (rs.reviewPass.startsWith("applet_")) {
-          appletKeys.push({
-            key: rs.reviewPass,
-            label: rs.reviewPass.replace("applet_", "Applet "),
-          });
+          keys.push({ key: rs.reviewPass, label: rs.reviewPass.replace("applet_", "Applet ") });
         }
       }
     }
-
-    return [...baseTabs, ...appletKeys];
+    return keys;
   }, [moduleData?.sourceFiles, reviewScores]);
 
   const handleDecisionChange = useCallback(
@@ -211,11 +199,13 @@ export default function ModuleDetailPage() {
     }
   };
 
-  const tabBadges = useMemo(() => {
+  // Pending badge counts per section key (agent recs only, not custom)
+  const pendingBadges = useMemo(() => {
     if (!recommendations) return {};
     const badges: Record<string, number> = {};
     for (const r of recommendations) {
       if (r.reviewStatus !== "pending") continue;
+      if (r.source === "reviewer") continue; // custom recs tracked separately
       if (r.component === "module") {
         badges["global"] = (badges["global"] ?? 0) + 1;
       } else {
@@ -223,6 +213,12 @@ export default function ModuleDetailPage() {
       }
     }
     return badges;
+  }, [recommendations]);
+
+  // Total custom recs count (for sidebar badge)
+  const customRecCount = useMemo(() => {
+    if (!recommendations) return 0;
+    return recommendations.filter((r) => r.source === "reviewer").length;
   }, [recommendations]);
 
   if (me === undefined || moduleData === undefined) {
@@ -349,29 +345,6 @@ export default function ModuleDetailPage() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-0 -mb-px overflow-x-auto">
-            {tabs.map((tab) => (
-              <TabButton
-                key={tab.key}
-                active={activeTab === tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                badge={tabBadges[tab.key]}
-              >
-                {tab.label}
-                {tab.key !== "overview" && tab.key !== "flow" && recommendations && (() => {
-                  const count = tab.key === "custom"
-                    ? recommendations.filter((r) => r.source === "reviewer").length
-                    : tab.key === "global"
-                      ? recommendations.filter((r) => r.component === "module" && r.source !== "reviewer").length
-                      : tab.key === "spine"
-                        ? recommendations.filter((r) => r.component === "spine" && r.slideNumber != null).length
-                        : recommendations.filter((r) => r.component === tab.key && r.slideNumber != null).length;
-                  return count > 0 ? <span className="text-stone-300 ml-1">{count}</span> : null;
-                })()}
-              </TabButton>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -390,73 +363,95 @@ export default function ModuleDetailPage() {
         </div>
       )}
 
-      {/* Content with crossfade */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 pb-16">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {activeTab === "overview" ? (
-              <OverviewContent
-                moduleData={moduleData}
-                reviewScores={reviewScores ?? []}
-                allGateResults={allGateResults ?? []}
-              />
-            ) : activeTab === "flow" ? (
-              <FlowTabContent flowMapData={flowMapData ?? []} />
-            ) : activeTab === "custom" ? (
-              <CustomTabContent
-                moduleId={moduleId}
-                version={moduleData.version}
-                sourceFiles={moduleData.sourceFiles}
-                slides={slidesWithUrls ?? []}
-                recommendations={recommendations ?? []}
-                readOnly={!canReview}
-              />
-            ) : activeTab === "global" ? (
-              <GlobalContent
-                moduleData={moduleData}
-                reviewScores={reviewScores ?? []}
-                recommendations={recommendations ?? []}
-                decisions={decisions}
-                onDecisionChange={handleDecisionChange}
-                readOnly={!canReview}
-              />
-            ) : activeTab === "spine" ? (
-              <SpineTabContent
-                reviewScores={reviewScores ?? []}
-                gatekeeperData={(allGateResults ?? []).find((g) => g.component === "module") ?? null}
-                slides={slidesWithUrls ?? []}
-                recommendations={recommendations ?? []}
-                decisions={decisions}
-                onDecisionChange={handleDecisionChange}
-                readOnly={!canReview}
-              />
-            ) : activeTab.startsWith("applet_") ? (
-              <AppletTabContent
-                appletKey={activeTab}
-                appletLabel={tabs.find((t) => t.key === activeTab)?.label ?? activeTab}
-                reviewScores={reviewScores ?? []}
-                gatekeeperData={(allGateResults ?? []).find((g) => g.component === activeTab) ?? null}
-                slides={slidesWithUrls ?? []}
-                recommendations={recommendations ?? []}
-                decisions={decisions}
-                onDecisionChange={handleDecisionChange}
-                readOnly={!canReview}
-              />
-            ) : null}
-          </motion.div>
-        </AnimatePresence>
-        </div>
-      </main>
+      {/* Two-column body: Sidebar + Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar */}
+        <ModuleSidebar
+          activeSection={activeSection}
+          onSectionChange={(s) => {
+            setActiveSection(s);
+            setAutoOpenCustomForm(false);
+          }}
+          sourceFiles={moduleData.sourceFiles}
+          pendingBadges={pendingBadges}
+          customRecCount={customRecCount}
+          canReview={canReview}
+          onAddCustomRec={() => {
+            setActiveSection("custom");
+            setAutoOpenCustomForm(true);
+          }}
+        />
+
+        {/* Main content area */}
+        <main className="flex-1 overflow-y-auto min-w-0">
+          <div className="max-w-[960px] mx-auto px-6 py-4 pb-24">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeSection}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {activeSection === "overview" ? (
+                  <OverviewContent
+                    moduleData={moduleData}
+                    reviewScores={reviewScores ?? []}
+                    allGateResults={allGateResults ?? []}
+                  />
+                ) : activeSection === "flow" ? (
+                  <FlowTabContent flowMapData={flowMapData ?? []} />
+                ) : activeSection === "custom" ? (
+                  <CustomRecsPanel
+                    moduleId={moduleId}
+                    version={moduleData.version}
+                    sourceFiles={moduleData.sourceFiles}
+                    slides={slidesWithUrls ?? []}
+                    recommendations={recommendations ?? []}
+                    readOnly={!canReview}
+                    autoOpenForm={autoOpenCustomForm}
+                    onFormClosed={() => setAutoOpenCustomForm(false)}
+                  />
+                ) : activeSection === "global" ? (
+                  <GlobalContent
+                    moduleData={moduleData}
+                    reviewScores={reviewScores ?? []}
+                    recommendations={recommendations ?? []}
+                    decisions={decisions}
+                    onDecisionChange={handleDecisionChange}
+                    readOnly={!canReview}
+                  />
+                ) : activeSection === "spine" ? (
+                  <SpineTabContent
+                    reviewScores={reviewScores ?? []}
+                    gatekeeperData={(allGateResults ?? []).find((g) => g.component === "module") ?? null}
+                    slides={slidesWithUrls ?? []}
+                    recommendations={recommendations ?? []}
+                    decisions={decisions}
+                    onDecisionChange={handleDecisionChange}
+                    readOnly={!canReview}
+                  />
+                ) : activeSection.startsWith("applet_") ? (
+                  <AppletTabContent
+                    appletKey={activeSection}
+                    appletLabel={appletKeys.find((t) => t.key === activeSection)?.label ?? activeSection}
+                    reviewScores={reviewScores ?? []}
+                    gatekeeperData={(allGateResults ?? []).find((g) => g.component === activeSection) ?? null}
+                    slides={slidesWithUrls ?? []}
+                    recommendations={recommendations ?? []}
+                    decisions={decisions}
+                    onDecisionChange={handleDecisionChange}
+                    readOnly={!canReview}
+                  />
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </main>
+      </div>
 
       {/* Sticky save bar — reviewers only */}
-      {canReview && recCount > 0 && activeTab !== "overview" && (
+      {canReview && recCount > 0 && activeSection !== "overview" && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-stone-200/60 shadow-bar px-6 py-3.5 z-20">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="text-xs text-stone-500 flex items-center gap-3">
@@ -503,30 +498,7 @@ export default function ModuleDetailPage() {
   );
 }
 
-/* --- Tab Button with sliding underline --- */
-function TabButton({ active, onClick, badge, children }: {
-  active: boolean; onClick: () => void; badge?: number; children: React.ReactNode;
-}) {
-  return (
-    <button onClick={onClick} className={`relative px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${active ? "text-stone-900" : "text-stone-400 hover:text-stone-600"}`}>
-      <span className="flex items-center gap-1.5">
-        {children}
-        {badge != null && badge > 0 && (
-          <span className="w-1.5 h-1.5 rounded-full bg-stone-800" />
-        )}
-      </span>
-      {active && (
-        <motion.span
-          layoutId="tab-underline"
-          className="absolute bottom-0 left-4 right-4 h-[2px] bg-stone-800 rounded-full"
-          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-        />
-      )}
-    </button>
-  );
-}
-
-/* --- Overview Tab --- */
+/* --- Overview Section --- */
 
 type ReviewScoreRow = {
   reviewPass: string;
@@ -803,116 +775,7 @@ function FlowTabContent({ flowMapData }: { flowMapData: React.ComponentProps<typ
   return <FlowMapTable steps={flowMapData} />;
 }
 
-/* --- Custom Tab --- */
-
-type CustomRecommendation = {
-  _id: string;
-  issue: string;
-  recommendedFix: string;
-  component: string;
-  slideNumber?: number;
-  sourceAttribution?: string;
-  agentName?: string;
-  source?: string;
-  createdAt: string;
-};
-
-function CustomTabContent({
-  moduleId,
-  version,
-  sourceFiles,
-  slides,
-  recommendations,
-  readOnly = false,
-}: {
-  moduleId: string;
-  version: number;
-  sourceFiles?: { type: string; label: string }[];
-  slides: { slideNumber: number; sourceFile?: string }[];
-  recommendations: CustomRecommendation[];
-  readOnly?: boolean;
-}) {
-  const addCustomReview = useMutation(api.recommendations.addCustomReview);
-  const customRecs = recommendations.filter((r) => r.source === "reviewer");
-
-  const handleSubmit = async (data: {
-    issue: string;
-    recommendedFix: string;
-    slideNumber?: number;
-    component: string;
-  }) => {
-    await addCustomReview({
-      moduleId,
-      version,
-      issue: data.issue,
-      recommendedFix: data.recommendedFix,
-      component: data.component,
-      slideNumber: data.slideNumber,
-      reviewerName: "Vinay",
-    });
-  };
-
-  const componentLabel = (component: string) => {
-    if (component === "module") return "Module-wide";
-    if (component === "spine") return "Spine";
-    const match = component.match(/^applet_(\d+)$/);
-    if (match) return `Applet ${match[1]}`;
-    return component;
-  };
-
-  return (
-    <div className="space-y-3">
-      {!readOnly && (
-        <CustomReviewForm
-          sourceFiles={sourceFiles}
-          slides={slides}
-          onSubmit={handleSubmit}
-        />
-      )}
-
-      {customRecs.length > 0 ? (
-        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-5">
-          <h3 className="text-[11px] font-semibold text-stone-400 uppercase tracking-[0.08em] mb-3">
-            Custom Reviews ({customRecs.length})
-          </h3>
-          <div className="space-y-2">
-            {customRecs.map((r) => (
-              <div
-                key={r._id}
-                className="border border-stone-200 rounded-lg border-l-2 border-l-stone-600 bg-white px-3 py-2.5"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-medium text-stone-500 flex items-center gap-1.5">
-                    <span className="w-1 h-1 rounded-full bg-stone-500" />
-                    {componentLabel(r.component)}
-                    {r.slideNumber != null && (
-                      <span className="font-mono text-stone-400"> &middot; Slide {r.slideNumber}</span>
-                    )}
-                  </span>
-                  <span className="text-[11px] text-stone-300 ml-auto">
-                    {r.sourceAttribution ?? r.agentName}
-                  </span>
-                </div>
-                <p className="text-[13px] text-stone-700 leading-relaxed">{r.issue}</p>
-                {r.recommendedFix && (
-                  <p className="text-[13px] text-stone-500 mt-1 leading-relaxed">
-                    <span className="font-medium text-stone-400">Fix:</span> {r.recommendedFix}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-stone-200 shadow-subtle p-8 text-center">
-          <p className="text-sm text-stone-400">No custom reviews yet</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* --- Global Tab --- */
+/* --- Global Section --- */
 
 type Recommendation = {
   _id: string;

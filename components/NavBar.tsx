@@ -18,6 +18,7 @@ const BAND_LEGEND = [
 type NavLink = { href: string; label: string; roles?: string[] };
 
 const NAV_LINKS: NavLink[] = [
+  { href: "/tracker", label: "Tracker" },
   { href: "/board", label: "Board" },
   { href: "/upload", label: "Upload", roles: ["content_creator", "lead_reviewer", "manager", "admin"] },
   { href: "/curriculum", label: "Curriculum" },

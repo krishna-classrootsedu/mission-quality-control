@@ -268,6 +268,7 @@ export default defineSchema({
     agentName: v.string(),
     source: v.optional(v.string()),       // "agent" (default/omitted) | "reviewer"
     fixStatus: v.optional(v.string()),   // "fixed" | "partially_fixed" | "not_fixed" (corrections flow only)
+    deletedAt: v.optional(v.string()),   // ISO string if soft-deleted by reviewer
     createdAt: v.string(),
   })
     .index("by_moduleId_version", ["moduleId", "version"])

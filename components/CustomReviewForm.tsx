@@ -25,14 +25,20 @@ type CustomReviewFormProps = {
     slideNumber?: number;
     component: string;
   }) => Promise<void>;
+  /** If true, open the form automatically on mount */
+  autoOpen?: boolean;
+  /** Called when form is closed or cancelled */
+  onClose?: () => void;
 };
 
 export default function CustomReviewForm({
   sourceFiles,
   slides,
   onSubmit,
+  autoOpen = false,
+  onClose,
 }: CustomReviewFormProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(autoOpen);
   const [issue, setIssue] = useState("");
   const [fix, setFix] = useState("");
   const [component, setComponent] = useState("module");
@@ -114,6 +120,7 @@ export default function CustomReviewForm({
 
   const handleCancel = () => {
     setIsOpen(false);
+    onClose?.();
     setTimeout(() => {
       setIssue("");
       setFix("");

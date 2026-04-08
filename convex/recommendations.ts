@@ -485,9 +485,26 @@ export const byModule = query({
       )
       .collect();
 
+    // Filter out soft-deleted recs
+    const active = recs.filter((r) => !r.deletedAt);
+
     if (user.role === ROLES.CONTENT_CREATOR) {
-      return recs.filter((r) => r.reviewStatus !== "pending" || r.source === "reviewer");
+      return active.filter((r) => r.reviewStatus !== "pending" || r.source === "reviewer");
     }
-    return recs;
+    return active;
+  },
+});
+
+// Soft-delete a custom recommendation (reviewer-authored only)
+export const softDeleteRecommendation = mutation({
+  args: { recommendationId: v.id("recommendations") },
+  handler: async (ctx, { recommendationId }) => {
+    await requireAnyRole(ctx, [ROLES.LEAD_REVIEWER, ROLES.MANAGER, ROLES.ADMIN]);
+    const rec = await ctx.db.get(recommendationId);
+    if (!rec) throw new Error("Recommendation not found");
+    if (rec.source !== "reviewer") throw new Error("Only reviewer-authored recommendations can be deleted");
+    const allowed = await canReviewModule(ctx, rec.moduleId);
+    if (!allowed) throw new Error("Forbidden: no review access for this module");
+    await ctx.db.patch(recommendationId, { deletedAt: new Date().toISOString() });
   },
 });

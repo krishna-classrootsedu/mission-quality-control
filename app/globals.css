@@ -52,3 +52,24 @@ body::after {
     font-family: var(--font-display), Georgia, serif;
   }
 }
+
+/* Tracker table layout
+   Col widths: # | Module title (flex) | Creator | Reviewer | Stage | Score | Band | Ver | Open recs | Updated | Arrow
+*/
+.tracker-row-grid {
+  display: grid;
+  grid-template-columns:
+    32px          /* Mod # */
+    1fr           /* Title */
+    100px         /* Creator */
+    100px         /* Reviewer */
+    130px         /* Stage pill */
+    72px          /* Score */
+    120px         /* Band pill */
+    36px          /* Ver */
+    80px          /* Open recs */
+    52px          /* Updated */
+    20px;         /* Arrow */
+  gap: 0 8px;
+  align-items: center;
+}

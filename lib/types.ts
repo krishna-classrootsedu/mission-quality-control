@@ -73,7 +73,7 @@ export const QUADRANTS = [
 
 export type QuadrantId = "P" | "D" | "X" | "L";
 
-// Board item (from getBoard query)
+// Board item (from getBoard / getTrackerData query)
 export type ModuleBoardItem = {
   _id: string;
   moduleId: string;
@@ -110,6 +110,7 @@ export type ModuleBoardItem = {
     notFixedCount: number;
     totalRecs: number;
   } | null;
+  reviewerName?: string | null;
 };
 
 // Column config — all neutral stone palette (quiet luxury: the label is enough differentiation)
@@ -157,4 +158,69 @@ export const STATUS_LABELS: Record<string, string> = {
   ship_ready: "Ship-ready",
   corrections_intake_complete: "Corrections Uploaded",
   corrections_review_complete: "Corrections Checked",
+};
+
+// ─── Tracker visual system ────────────────────────────────────────────────────
+
+// Notion-style colors for board column stage pills in the Tracker
+export type StageColor = {
+  bg: string;
+  text: string;
+  dot: string;
+  border: string;
+};
+
+export const BOARD_COLUMN_COLORS: Record<BoardColumn, StageColor> = {
+  "Submitted":     { bg: "bg-slate-100",    text: "text-slate-700",    dot: "bg-slate-400",    border: "border-slate-200" },
+  "Parsing":       { bg: "bg-sky-100",      text: "text-sky-700",      dot: "bg-sky-500",      border: "border-sky-200" },
+  "Gate Check":    { bg: "bg-indigo-100",   text: "text-indigo-700",   dot: "bg-indigo-500",   border: "border-indigo-200" },
+  "In Review":     { bg: "bg-violet-100",   text: "text-violet-700",   dot: "bg-violet-500",   border: "border-violet-200" },
+  "Integration":   { bg: "bg-fuchsia-100",  text: "text-fuchsia-700",  dot: "bg-fuchsia-500",  border: "border-fuchsia-200" },
+  "Vinay Review":  { bg: "bg-purple-100",   text: "text-purple-800",   dot: "bg-purple-600",   border: "border-purple-200" },
+  "Creator Fix":   { bg: "bg-amber-100",    text: "text-amber-800",    dot: "bg-amber-500",    border: "border-amber-200" },
+  "Ship-ready":    { bg: "bg-emerald-100",  text: "text-emerald-800",  dot: "bg-emerald-600",  border: "border-emerald-200" },
+};
+
+// Score band colors for tracker pills
+export const BAND_PILL_COLORS: Record<string, StageColor> = {
+  ship_ready:   { bg: "bg-emerald-100", text: "text-emerald-800", dot: "bg-emerald-500",  border: "border-emerald-200" },
+  upgradeable:  { bg: "bg-amber-100",   text: "text-amber-800",   dot: "bg-amber-500",    border: "border-amber-200" },
+  rework:       { bg: "bg-orange-100",  text: "text-orange-800",  dot: "bg-orange-500",   border: "border-orange-200" },
+  redesign:     { bg: "bg-red-100",     text: "text-red-800",     dot: "bg-red-500",      border: "border-red-200" },
+};
+
+// 8-color palette for owner chips — deterministic so the same person is always the same color
+const OWNER_CHIP_PALETTE = [
+  { bg: "bg-rose-100",    text: "text-rose-800"    },
+  { bg: "bg-orange-100",  text: "text-orange-800"  },
+  { bg: "bg-lime-100",    text: "text-lime-800"    },
+  { bg: "bg-teal-100",    text: "text-teal-800"    },
+  { bg: "bg-sky-100",     text: "text-sky-800"     },
+  { bg: "bg-violet-100",  text: "text-violet-800"  },
+  { bg: "bg-pink-100",    text: "text-pink-800"    },
+  { bg: "bg-stone-100",   text: "text-stone-700"   },
+] as const;
+
+export function ownerColorIndex(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return hash % OWNER_CHIP_PALETTE.length;
+}
+
+export function ownerChipColors(name: string): { bg: string; text: string } {
+  return OWNER_CHIP_PALETTE[ownerColorIndex(name)];
+}
+
+// Human-readable label for a board column
+export const BOARD_COLUMN_LABELS: Record<BoardColumn, string> = {
+  "Submitted":    "Submitted",
+  "Parsing":      "Parsing",
+  "Gate Check":   "Gate Check",
+  "In Review":    "In Review",
+  "Integration":  "Integration",
+  "Vinay Review": "Needs Vinay",
+  "Creator Fix":  "Creator Fix",
+  "Ship-ready":   "Ship-ready",
 };
