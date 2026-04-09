@@ -35,6 +35,11 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
 
             <div className="flex items-center gap-1.5 flex-wrap">
               <StageBadge status={module.status} />
+              {module.status === "intake_complete" && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                  parsing-done
+                </span>
+              )}
               <HealthBar updatedAt={module.updatedAt} />
             </div>
 
