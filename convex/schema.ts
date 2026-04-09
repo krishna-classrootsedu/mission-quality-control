@@ -116,31 +116,38 @@ export default defineSchema({
     .index("by_updatedAt", ["updatedAt"])
     .index("by_submittedByUserId", ["submittedByUserId"]),
 
-  // Curriculum map — pre-defined curriculum hierarchy (input table)
+  // Curriculum map — input table (source of truth for what each module should teach)
+  // Human-authored upfront by the content manager, before authoring begins.
+  // Agents read this at review time to understand what is covered in sibling
+  // modules in the same chapter, so they don't recommend teaching content that
+  // belongs elsewhere.
   curriculumMap: defineTable({
-    // Hierarchy
+    // Canonical module identifier — format: G{grade}C{chapter}M{module} (e.g. "G6C3M5")
+    moduleCode: v.string(),
+    // Curriculum hierarchy (from ClassRoots + Merdeka curriculum)
+    thread: v.optional(v.string()),           // e.g. "Algebra"
+    strand: v.optional(v.string()),           // e.g. "Algebraic Expressions"
+    tpCode: v.optional(v.string()),           // e.g. "TP-C-ALG-A.3"
+    tpDescription: v.optional(v.string()),    // full Merdeka LO text
+    // Derived from moduleCode on write — redundant for fast indexed queries
     grade: v.number(),
     chapterNumber: v.number(),
-    chapterName: v.string(),
     moduleNumber: v.number(),
-    moduleName: v.string(),
-    // Learning content
-    learningOutcomes: v.string(),
-    // Classification (backfillable)
-    topic: v.optional(v.string()),
-    cp: v.optional(v.string()),
-    tp: v.optional(v.string()),
-    phase: v.optional(v.string()),
-    // Future knowledgeLedger-aligned fields (backfillable)
-    prerequisites: v.optional(v.string()),
-    keyVocabulary: v.optional(v.string()),
-    conceptsCovered: v.optional(v.string()),
-    // Metadata
+    // Textbook-facing labels
+    chapterName: v.optional(v.string()),
+    conceptName: v.optional(v.string()),         // short title of the module
+    conceptType: v.optional(v.string()),         // "Learn" | "Practice" | "Challenge"
+    conceptDescription: v.optional(v.string()),  // one-line summary
+    proposedLOs: v.optional(v.string()),         // authoritative target LOs — what the reviewer scores against
+    // Bookkeeping — blame trail (always updated on any write)
     createdAt: v.string(),
-    updatedAt: v.string(),
     createdBy: v.optional(v.id("users")),
+    createdByName: v.optional(v.string()),       // denormalized display label
+    lastEditedAt: v.string(),
+    lastEditedBy: v.optional(v.id("users")),
+    lastEditedByName: v.optional(v.string()),    // denormalized display label
   })
-    .index("by_grade_chapter_module", ["grade", "chapterNumber", "moduleNumber"])
+    .index("by_moduleCode", ["moduleCode"])
     .index("by_grade_chapter", ["grade", "chapterNumber"])
     .index("by_grade", ["grade"]),
 
