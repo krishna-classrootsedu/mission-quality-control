@@ -104,7 +104,7 @@ export default function TrackerRow({ item }: TrackerRowProps) {
 
         {/* Stage */}
         <div>
-          <StagePill column={item.column} />
+          <StagePill column={item.column} status={item.status} />
         </div>
 
         {/* Score */}
