@@ -33,6 +33,14 @@ export default function ModuleCard({ module, index = 0 }: { module: ModuleBoardI
               <span className="text-[11px] font-mono text-stone-400 shrink-0 mt-0.5">v{module.version}</span>
             </div>
 
+            {module.status === "intake_complete" && (
+              <div className="flex items-center">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                  parsing-done
+                </span>
+              </div>
+            )}
+
             {/* Row 2: Score band + percentage */}
             {module.corrections && module.corrections.totalRecs > 0 ? (
               <div className="space-y-1">
