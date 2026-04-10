@@ -111,10 +111,9 @@ export default function UploadPage() {
     if (mode !== "new" || curriculumMode !== "auto" || !curriculumModules || moduleNumber === "") return;
     const match = curriculumModules.find((m) => m.moduleNumber === moduleNumber);
     if (match) {
-      setTitle(match.moduleName);
-      setLearningObjective(match.learningOutcomes);
-      setChapterName(match.chapterName);
-      if (match.topic) setTopic(match.topic);
+      if (match.conceptName) setTitle(match.conceptName);
+      if (match.proposedLOs) setLearningObjective(match.proposedLOs);
+      if (match.chapterName) setChapterName(match.chapterName);
       setSelectedCurriculumId(match._id);
       setCurriculumFilled(true);
     } else {
@@ -539,7 +538,7 @@ export default function UploadPage() {
                       >
                         <option value="">Select...</option>
                         {curriculumModules.map((m) => (
-                          <option key={m.moduleNumber} value={m.moduleNumber}>M{m.moduleNumber} — {m.moduleName}</option>
+                          <option key={m.moduleNumber} value={m.moduleNumber}>M{m.moduleNumber}{m.conceptName ? ` — ${m.conceptName}` : ""}</option>
                         ))}
                         <option value="__manual__">Type manually</option>
                       </select>
