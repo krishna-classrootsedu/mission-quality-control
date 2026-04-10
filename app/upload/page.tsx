@@ -1062,6 +1062,7 @@ function TranscriptRow({
   onFileSelect: (id: string, file?: File) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const slideOptions: number[] = [];
   for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
 
@@ -1112,23 +1113,72 @@ function TranscriptRow({
         </span>
       </div>
 
-      <textarea
-        value={entry.content}
-        onChange={(e) =>
-          onChange(entry.id, {
-            content: e.target.value,
-            parseError: undefined,
-            mode: "textbox",
-          })
-        }
-        rows={3}
-        placeholder="Paste transcript text here..."
-        className="w-full text-[12px] rounded-lg border border-stone-200 px-2.5 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
-      />
+      <div className="rounded-lg border border-stone-200 bg-white p-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-medium text-stone-500">Transcript</span>
+          <button
+            type="button"
+            onClick={() => setEditorOpen(true)}
+            className="text-[11px] px-2 py-1 rounded border border-stone-200 text-stone-600 hover:bg-stone-50"
+          >
+            {entry.content.trim() ? "Edit" : "Add"}
+          </button>
+        </div>
+        <p className="text-[11px] text-stone-500 whitespace-pre-wrap max-h-20 overflow-y-auto">
+          {entry.content.trim() || "No transcript text yet."}
+        </p>
+      </div>
       <p className="text-[10px] text-stone-400">
         Source: {entry.mode === "file" ? "file upload" : "textbox/paste"}
       </p>
       {entry.parseError && <p className="text-[11px] text-red-600">{entry.parseError}</p>}
+
+      {editorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl bg-white rounded-xl border border-stone-200 shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
+              <div>
+                <h3 className="text-sm font-semibold text-stone-800">Edit Transcript</h3>
+                <p className="text-[11px] text-stone-500">Spine slide {entry.sourceSlideNumber}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                className="text-stone-400 hover:text-stone-700"
+                title="Close"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                value={entry.content}
+                onChange={(e) =>
+                  onChange(entry.id, {
+                    content: e.target.value,
+                    parseError: undefined,
+                    mode: "textbox",
+                  })
+                }
+                rows={16}
+                placeholder="Paste transcript text here..."
+                className="w-full text-[13px] rounded-lg border border-stone-200 px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
+              />
+            </div>
+            <div className="px-4 py-3 border-t border-stone-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[12px] hover:bg-stone-800"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
