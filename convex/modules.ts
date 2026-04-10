@@ -729,6 +729,35 @@ export const markShipReady = mutation({
   },
 });
 
+export const updateTitle = mutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+    title: v.string(),
+  },
+  handler: async (ctx, { moduleId, version, title }) => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) throw new Error("Title cannot be empty");
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+
+    const allVersions = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .collect();
+    const match = allVersions.find((m) => m.version === version && !m.deleted);
+    if (!match) throw new Error(`Module not found: ${moduleId} v${version}`);
+
+    await ctx.db.patch(match._id, {
+      title: trimmedTitle,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return { success: true, title: trimmedTitle };
+  },
+});
+
 // Modules eligible for corrections submission (vinay_reviewed or creator_fixing)
 export const correctableModules = query({
   args: {},

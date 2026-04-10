@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -24,7 +24,12 @@ export default function ModuleDetailPage() {
   const [autoOpenCustomForm, setAutoOpenCustomForm] = useState(false);
   const [decisions, setDecisions] = useState<Map<string, { status: string; comment: string }>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleError, setTitleError] = useState<string | null>(null);
   const me = useQuery(api.users.me);
 
   const allVersions = useQuery(api.modules.allVersions, me ? { moduleId } : "skip");
@@ -101,6 +106,15 @@ export default function ModuleDetailPage() {
   const completeMutation = useMutation(api.recommendations.completeVinayReview);
   const finalizeCorrections = useMutation(api.modules.finalizeCorrectionsReview);
   const markShipReadyMutation = useMutation(api.modules.markShipReady);
+  const updateTitleMutation = useMutation(api.modules.updateTitle);
+
+  useEffect(() => {
+    if (moduleData?.title) {
+      setEditedTitle(moduleData.title);
+      setIsEditingTitle(false);
+      setTitleError(null);
+    }
+  }, [moduleData?.title, moduleData?.version]);
 
   // Build applet keys for sidebar (same logic as before, now for sidebar rendering)
   const appletKeys = useMemo(() => {
@@ -124,6 +138,7 @@ export default function ModuleDetailPage() {
 
   const handleDecisionChange = useCallback(
     (id: string, status: string, comment: string) => {
+      setSaveError(null);
       setDecisions((prev) => {
         const next = new Map(prev);
         next.set(id, { status, comment });
@@ -139,6 +154,19 @@ export default function ModuleDetailPage() {
       alert("Permission denied");
       return;
     }
+    const rejectedWithoutComment = Array.from(decisions.values()).filter(
+      (d) => d.status === "rejected" && !d.comment.trim()
+    ).length;
+    if (rejectedWithoutComment > 0) {
+      setSaveError(
+        `${rejectedWithoutComment} rejected ${
+          rejectedWithoutComment === 1 ? "recommendation is" : "recommendations are"
+        } missing comment. Add a comment for each rejected item before saving.`
+      );
+      return;
+    }
+
+    setSaveError(null);
     setSaving(true);
     try {
       const saved = new Map(decisions);
@@ -152,8 +180,14 @@ export default function ModuleDetailPage() {
         saved.delete(id);
       }
       setDecisions(saved);
+      setSaveError(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (msg.includes("Comment is mandatory when rejecting a recommendation.")) {
+        setSaveError("Rejected recommendations require a comment before saving.");
+      } else {
+        setSaveError(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -196,6 +230,30 @@ export default function ModuleDetailPage() {
       alert("Module marked ship-ready.");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to mark module ship-ready");
+    }
+  };
+
+  const handleSaveTitle = async () => {
+    if (!moduleData) return;
+    const trimmed = editedTitle.trim();
+    if (!trimmed) {
+      setTitleError("Title cannot be empty.");
+      return;
+    }
+    if (trimmed === moduleData.title) {
+      setIsEditingTitle(false);
+      setTitleError(null);
+      return;
+    }
+    setTitleSaving(true);
+    setTitleError(null);
+    try {
+      await updateTitleMutation({ moduleId, version: moduleData.version, title: trimmed });
+      setIsEditingTitle(false);
+    } catch (err) {
+      setTitleError(err instanceof Error ? err.message : "Failed to update title");
+    } finally {
+      setTitleSaving(false);
     }
   };
 
@@ -250,6 +308,7 @@ export default function ModuleDetailPage() {
   }
 
   const canReview = me?.role === "lead_reviewer" || me?.role === "manager" || me?.role === "admin";
+  const canEditTitle = me?.role === "manager" || me?.role === "admin";
   const canPrivilegedMarkShipReady =
     (me?.role === "manager" || me?.role === "admin") &&
     ["review_complete", "vinay_reviewed", "corrections_intake_complete", "corrections_review_complete"].includes(
@@ -267,9 +326,58 @@ export default function ModuleDetailPage() {
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="flex items-center justify-between py-3">
             <div>
-              <h1 className="text-lg font-semibold text-stone-800 tracking-tight leading-tight">
-                {moduleData.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                {isEditingTitle ? (
+                  <>
+                    <input
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      className="text-lg font-semibold text-stone-800 tracking-tight leading-tight border border-stone-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-stone-400"
+                      maxLength={120}
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveTitle}
+                      disabled={titleSaving}
+                      className="text-xs px-2 py-1 rounded bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-60"
+                    >
+                      {titleSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingTitle(false);
+                        setEditedTitle(moduleData.title);
+                        setTitleError(null);
+                      }}
+                      disabled={titleSaving}
+                      className="text-xs px-2 py-1 rounded border border-stone-300 text-stone-600 hover:bg-stone-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-lg font-semibold text-stone-800 tracking-tight leading-tight">
+                      {moduleData.title}
+                    </h1>
+                    {canEditTitle && (
+                      <button
+                        onClick={() => setIsEditingTitle(true)}
+                        className="text-stone-400 hover:text-stone-700 transition-colors"
+                        title="Edit title"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+                        </svg>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {titleError && (
+                <p className="text-[11px] text-red-600 mt-1">{titleError}</p>
+              )}
               <div className="flex items-center gap-2 mt-0.5">
                 <StageBadge status={moduleData.status} />
                 {allVersions && allVersions.length > 1 ? (
@@ -455,6 +563,9 @@ export default function ModuleDetailPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-stone-200/60 shadow-bar px-6 py-3.5 z-20">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <div className="text-xs text-stone-500 flex items-center gap-3">
+              {saveError && (
+                <span className="text-red-600 font-medium">{saveError}</span>
+              )}
               {saveableCount > 0 && (
                 <span className="text-stone-700 font-medium">{saveableCount} ready to save</span>
               )}
