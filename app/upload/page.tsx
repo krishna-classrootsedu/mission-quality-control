@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -1066,6 +1067,15 @@ function TranscriptRow({
   const slideOptions: number[] = [];
   for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
 
+  useEffect(() => {
+    if (!editorOpen || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editorOpen]);
+
   return (
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-2">
       <div className="flex items-center gap-2">
@@ -1133,52 +1143,56 @@ function TranscriptRow({
       </p>
       {entry.parseError && <p className="text-[11px] text-red-600">{entry.parseError}</p>}
 
-      {editorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl bg-white rounded-xl border border-stone-200 shadow-xl">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
-              <div>
-                <h3 className="text-sm font-semibold text-stone-800">Edit Transcript</h3>
-                <p className="text-[11px] text-stone-500">Spine slide {entry.sourceSlideNumber}</p>
+      {editorOpen && typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl rounded-xl shadow-xl">
+              <div className="bg-white rounded-xl overflow-hidden ring-1 ring-stone-200 [clip-path:inset(0_round_0.75rem)]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-800">Edit Transcript</h3>
+                    <p className="text-[11px] text-stone-500">Spine slide {entry.sourceSlideNumber}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditorOpen(false)}
+                    className="text-stone-400 hover:text-stone-700"
+                    title="Close"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="p-4">
+                  <textarea
+                    value={entry.content}
+                    onChange={(e) =>
+                      onChange(entry.id, {
+                        content: e.target.value,
+                        parseError: undefined,
+                        mode: "textbox",
+                      })
+                    }
+                    rows={16}
+                    placeholder="Paste transcript text here..."
+                    className="w-full text-[13px] rounded-lg border border-stone-200 px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
+                  />
+                </div>
+                <div className="px-4 py-3 border-t border-stone-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditorOpen(false)}
+                    className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[12px] hover:bg-stone-800"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditorOpen(false)}
-                className="text-stone-400 hover:text-stone-700"
-                title="Close"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
             </div>
-            <div className="p-4">
-              <textarea
-                value={entry.content}
-                onChange={(e) =>
-                  onChange(entry.id, {
-                    content: e.target.value,
-                    parseError: undefined,
-                    mode: "textbox",
-                  })
-                }
-                rows={16}
-                placeholder="Paste transcript text here..."
-                className="w-full text-[13px] rounded-lg border border-stone-200 px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
-              />
-            </div>
-            <div className="px-4 py-3 border-t border-stone-100 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setEditorOpen(false)}
-                className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[12px] hover:bg-stone-800"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
