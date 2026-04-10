@@ -30,6 +30,60 @@ type AppletEntry = {
   parsed: ParsedFile | null;
 };
 
+type TranscriptEntry = {
+  id: string;
+  sourceSlideNumber: number;
+  mode: "textbox" | "file";
+  content: string;
+  fileName?: string;
+  parseError?: string;
+};
+
+function stripRtf(rtf: string): string {
+  return rtf
+    .replace(/\\par[d]?/g, "\n")
+    .replace(/\\'[0-9a-fA-F]{2}/g, "")
+    .replace(/\\[a-z]+[0-9]*\s?/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractPdfText(file: File): Promise<string> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
+  }
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const chunks: string[] = [];
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+    chunks.push(pageText);
+  }
+  return chunks.join("\n").trim();
+}
+
+async function extractTranscriptText(file: File): Promise<string> {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".pdf")) {
+    return extractPdfText(file);
+  }
+  if (lowerName.endsWith(".docx")) {
+    const mammoth = await import("mammoth");
+    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+    return result.value.trim();
+  }
+  if (lowerName.endsWith(".rtf")) {
+    return stripRtf(await file.text());
+  }
+  return (await file.text()).trim();
+}
+
 function isAppletFile(name: string): boolean {
   return /^G\d+C\d+M\d+A\d+/i.test(name) || /[\s_-]A\d+[\s_.-]/i.test(name);
 }
@@ -80,6 +134,7 @@ export default function UploadPage() {
   const [curriculumFilled, setCurriculumFilled] = useState(false);
   const [spineParsed, setSpineParsed] = useState<ParsedFile | null>(null);
   const [applets, setApplets] = useState<AppletEntry[]>([]);
+  const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitProgress, setSubmitProgress] = useState("");
@@ -125,6 +180,69 @@ export default function UploadPage() {
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
 
+  function addTranscriptRow() {
+    setTranscripts((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        sourceSlideNumber: 1,
+        mode: "textbox",
+        content: "",
+      },
+    ]);
+  }
+
+  function updateTranscriptRow(id: string, patch: Partial<TranscriptEntry>) {
+    setTranscripts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function removeTranscriptRow(id: string) {
+    setTranscripts((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function handleTranscriptFileSelect(id: string, file?: File) {
+    if (!file) return;
+    try {
+      const content = await extractTranscriptText(file);
+      if (!content) {
+        updateTranscriptRow(id, {
+          parseError: "Could not extract text from this file. For .doc use .docx/.pdf/.txt or paste transcript text.",
+          fileName: file.name,
+          content: "",
+        });
+        return;
+      }
+      updateTranscriptRow(id, {
+        mode: "file",
+        fileName: file.name,
+        parseError: undefined,
+        content,
+      });
+    } catch {
+      updateTranscriptRow(id, {
+        parseError: "Failed to read this file. Try .txt/.md/.docx/.pdf/.rtf/.csv or paste transcript text.",
+        fileName: file.name,
+      });
+    }
+  }
+
+  function validateTranscripts(): string | null {
+    const used = new Set<number>();
+    for (const t of transcripts) {
+      if (t.sourceSlideNumber < 1 || t.sourceSlideNumber > spineSlideCount) {
+        return `Transcript slide number must be between 1 and ${spineSlideCount}.`;
+      }
+      if (used.has(t.sourceSlideNumber)) {
+        return `Duplicate transcript for spine slide ${t.sourceSlideNumber}. Keep one transcript per slide.`;
+      }
+      used.add(t.sourceSlideNumber);
+      if (!t.content.trim()) {
+        return `Transcript content is empty for spine slide ${t.sourceSlideNumber}.`;
+      }
+    }
+    return null;
+  }
+
   async function parseFile(file: File): Promise<SourceSlide[]> {
     const uploadUrl = await generateUploadUrl();
     const uploadResult = await fetch(uploadUrl, {
@@ -164,6 +282,7 @@ export default function UploadPage() {
       return;
     }
     setError("");
+    setTranscripts([]);
     // Smart-fill from filename
     const match = f.name.match(/^G(\d+)C(\d+)M(\d+)/i);
     if (match) {
@@ -240,6 +359,10 @@ export default function UploadPage() {
     if (!spineParsed || submitting || submitted) return;
     setError(""); setSubmitting(true);
     try {
+      const transcriptValidationError = validateTranscripts();
+      if (transcriptValidationError) {
+        throw new Error(transcriptValidationError);
+      }
       setSubmitProgress("Uploading spine deck...");
       const uploadUrl = await generateUploadUrl();
       const uploadResult = await fetch(uploadUrl, {
@@ -265,11 +388,16 @@ export default function UploadPage() {
         morphPairWith: s.morphPairWith, metadata: s.metadata,
         thumbnailStorageId: s.thumbnailStorageId as Id<"_storage"> | undefined,
       }));
+      const videoTranscripts = transcripts.map((t) => ({
+        sourceSlideNumber: t.sourceSlideNumber,
+        content: t.content.trim(),
+        source: t.mode,
+      }));
 
       if (isCorrections && selectedModule) {
         setSubmitProgress("Submitting corrections...");
         const result = await submitCorrections({
-          moduleId: selectedModule.moduleId, sourceFiles, slides,
+          moduleId: selectedModule.moduleId, sourceFiles, slides, videoTranscripts,
         });
         setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
@@ -283,7 +411,7 @@ export default function UploadPage() {
           moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
           topic: topic || undefined,
           curriculumEntryId: selectedCurriculumId ?? undefined,
-          submittedBy: submittedBy.trim(), sourceFiles, slides,
+          submittedBy: submittedBy.trim(), sourceFiles, slides, videoTranscripts,
         });
         setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
@@ -339,7 +467,7 @@ export default function UploadPage() {
       {/* Mode toggle */}
       <div className="flex gap-1 mb-4">
         <button
-          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setTranscripts([]); setError(""); }}
           className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
             mode === "new" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
           }`}
@@ -347,7 +475,7 @@ export default function UploadPage() {
           New Module
         </button>
         <button
-          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setTranscripts([]); setError(""); }}
           className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
             mode === "corrections" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
           }`}
@@ -649,6 +777,43 @@ export default function UploadPage() {
             </div>
           </div>
 
+          {/* Zone 3: Video transcripts tied to spine slides */}
+          {spineReady && (
+            <div className="p-4 pt-3 border-t border-stone-100 mx-4">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Video Transcripts</span>
+                  <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.06em]">optional</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={addTranscriptRow}
+                  className="text-[11px] font-medium text-stone-500 hover:text-stone-700 transition-colors"
+                >
+                  + Add transcript
+                </button>
+              </div>
+              {transcripts.length === 0 ? (
+                <p className="text-[11px] text-stone-400">
+                  Add transcript text for any spine slide with embedded video. You can paste text or upload .txt/.md/.docx/.pdf/.rtf/.csv.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {transcripts.map((t) => (
+                    <TranscriptRow
+                      key={t.id}
+                      entry={t}
+                      spineSlideCount={spineSlideCount}
+                      onChange={updateTranscriptRow}
+                      onRemove={removeTranscriptRow}
+                      onFileSelect={handleTranscriptFileSelect}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Error */}
           {error && (
             <div className="mx-4 mb-3">
@@ -879,6 +1044,91 @@ function AppletRow({ applet, index, spineSlideCount, onFileSelect, onPositionCha
           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function TranscriptRow({
+  entry,
+  spineSlideCount,
+  onChange,
+  onRemove,
+  onFileSelect,
+}: {
+  entry: TranscriptEntry;
+  spineSlideCount: number;
+  onChange: (id: string, patch: Partial<TranscriptEntry>) => void;
+  onRemove: (id: string) => void;
+  onFileSelect: (id: string, file?: File) => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const slideOptions: number[] = [];
+  for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
+
+  return (
+    <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="text-[11px] text-stone-500">Spine slide</label>
+        <select
+          value={entry.sourceSlideNumber}
+          onChange={(e) => onChange(entry.id, { sourceSlideNumber: Number(e.target.value) })}
+          className="px-2 py-1 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-stone-200"
+        >
+          {slideOptions.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onRemove(entry.id)}
+            className="text-[11px] text-red-500 hover:text-red-600 px-1"
+            title="Remove transcript row"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".txt,.md,.doc,.docx,.rtf,.pdf,.csv,text/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/rtf,application/pdf"
+          className="hidden"
+          onChange={(e) => void onFileSelect(entry.id, e.target.files?.[0])}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="text-[11px] px-2.5 py-1.5 rounded border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+        >
+          Upload transcript file
+        </button>
+        <span className="text-[11px] text-stone-500">
+          {entry.fileName ? `${entry.fileName} (${entry.content.length} chars)` : "No file selected"}
+        </span>
+      </div>
+
+      <textarea
+        value={entry.content}
+        onChange={(e) =>
+          onChange(entry.id, {
+            content: e.target.value,
+            parseError: undefined,
+            mode: "textbox",
+          })
+        }
+        rows={3}
+        placeholder="Paste transcript text here..."
+        className="w-full text-[12px] rounded-lg border border-stone-200 px-2.5 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
+      />
+      <p className="text-[10px] text-stone-400">
+        Source: {entry.mode === "file" ? "file upload" : "textbox/paste"}
+      </p>
+      {entry.parseError && <p className="text-[11px] text-red-600">{entry.parseError}</p>}
     </div>
   );
 }
