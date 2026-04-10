@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { createPortal } from "react-dom";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -13,10 +12,6 @@ import {
 } from "@/lib/moduleFlow";
 
 const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const TOPICS = [
-  "Fractions", "Decimals", "Geometry", "Measurement",
-  "Data Handling", "Whole Numbers", "Algebra", "Other",
-];
 
 type ParsedFile = {
   file: File;
@@ -40,47 +35,10 @@ type TranscriptEntry = {
   parseError?: string;
 };
 
-function stripRtf(rtf: string): string {
-  return rtf
-    .replace(/\\par[d]?/g, "\n")
-    .replace(/\\'[0-9a-fA-F]{2}/g, "")
-    .replace(/\\[a-z]+[0-9]*\s?/g, "")
-    .replace(/[{}]/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-async function extractPdfText(file: File): Promise<string> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
-  }
-  const data = new Uint8Array(await file.arrayBuffer());
-  const doc = await pdfjs.getDocument({ data }).promise;
-  const chunks: string[] = [];
-  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-    const page = await doc.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    chunks.push(pageText);
-  }
-  return chunks.join("\n").trim();
-}
-
-async function extractTranscriptText(file: File): Promise<string> {
-  const lowerName = file.name.toLowerCase();
-  if (lowerName.endsWith(".pdf")) {
-    return extractPdfText(file);
-  }
-  if (lowerName.endsWith(".docx")) {
-    const mammoth = await import("mammoth");
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-    return result.value.trim();
-  }
-  if (lowerName.endsWith(".rtf")) {
-    return stripRtf(await file.text());
+async function readTranscriptFile(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+  if (!name.endsWith(".txt") && !name.endsWith(".md")) {
+    throw new Error("Only .txt and .md files are accepted for transcripts.");
   }
   return (await file.text()).trim();
 }
@@ -128,7 +86,6 @@ export default function UploadPage() {
   const [chapterNumber, setChapterNumber] = useState<number | "">("");
   const [chapterName, setChapterName] = useState("");
   const [moduleNumber, setModuleNumber] = useState<number | "">("");
-  const [topic, setTopic] = useState("");
   const [submittedBy, setSubmittedBy] = useState("");
   const [curriculumMode, setCurriculumMode] = useState<"auto" | "manual">("auto");
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculumMap"> | null>(null);
@@ -204,24 +161,15 @@ export default function UploadPage() {
   async function handleTranscriptFileSelect(id: string, file?: File) {
     if (!file) return;
     try {
-      const content = await extractTranscriptText(file);
+      const content = await readTranscriptFile(file);
       if (!content) {
-        updateTranscriptRow(id, {
-          parseError: "Could not extract text from this file. For .doc use .docx/.pdf/.txt or paste transcript text.",
-          fileName: file.name,
-          content: "",
-        });
+        updateTranscriptRow(id, { parseError: "File is empty.", fileName: file.name, content: "" });
         return;
       }
+      updateTranscriptRow(id, { mode: "file", fileName: file.name, parseError: undefined, content });
+    } catch (err) {
       updateTranscriptRow(id, {
-        mode: "file",
-        fileName: file.name,
-        parseError: undefined,
-        content,
-      });
-    } catch {
-      updateTranscriptRow(id, {
-        parseError: "Failed to read this file. Try .txt/.md/.docx/.pdf/.rtf/.csv or paste transcript text.",
+        parseError: err instanceof Error ? err.message : "Failed to read file. Use .txt or .md only.",
         fileName: file.name,
       });
     }
@@ -410,7 +358,6 @@ export default function UploadPage() {
           chapterNumber: chapterNumber !== "" ? chapterNumber : undefined,
           chapterName: chapterName.trim() || undefined,
           moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
-          topic: topic || undefined,
           curriculumEntryId: selectedCurriculumId ?? undefined,
           submittedBy: submittedBy.trim(), sourceFiles, slides, videoTranscripts,
         });
@@ -719,15 +666,6 @@ export default function UploadPage() {
                     className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 resize-none transition-shadow" />
                 </div>
 
-                {/* Row 5: Topic (optional) */}
-                <div className="max-w-[50%]">
-                  <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Topic</label>
-                  <select value={topic} onChange={(e) => setTopic(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
-                    <option value="">Select...</option>
-                    {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
               </div>
             </>
           )}
@@ -778,28 +716,32 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* Zone 3: Video transcripts tied to spine slides */}
+          {/* Transcript attachment — inline under spine success */}
           {spineReady && (
-            <div className="p-4 pt-3 border-t border-stone-100 mx-4">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-stone-600 uppercase tracking-[0.08em]">Video Transcripts</span>
-                  <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.06em]">optional</span>
-                </div>
+            <div className="mx-4 mb-1">
+              {transcripts.length === 0 ? (
                 <button
                   type="button"
                   onClick={addTranscriptRow}
-                  className="text-[11px] font-medium text-stone-500 hover:text-stone-700 transition-colors"
+                  className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors py-1"
                 >
-                  + Add transcript
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  Attach video transcripts
                 </button>
-              </div>
-              {transcripts.length === 0 ? (
-                <p className="text-[11px] text-stone-400">
-                  Add transcript text for any spine slide with embedded video. You can paste text or upload .txt/.md/.docx/.pdf/.rtf/.csv.
-                </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em]">Video Transcripts</span>
+                    <button
+                      type="button"
+                      onClick={addTranscriptRow}
+                      className="text-[11px] text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      + Add
+                    </button>
+                  </div>
                   {transcripts.map((t) => (
                     <TranscriptRow
                       key={t.id}
@@ -921,10 +863,6 @@ export default function UploadPage() {
                       <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
                       <div className="text-[13px] text-stone-600">G{grade} &middot; Ch{chapterNumber}{chapterName ? ` — ${chapterName}` : ""} &middot; M{moduleNumber}</div>
                     </div>
-                    {topic && <div>
-                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Topic</div>
-                      <div className="text-[13px] text-stone-600">{topic}</div>
-                    </div>}
                     <div>
                       <div className="text-[10px] text-stone-400 uppercase tracking-wide">Submitted by</div>
                       <div className="text-[13px] text-stone-600">{submittedBy}</div>
@@ -1063,136 +1001,63 @@ function TranscriptRow({
   onFileSelect: (id: string, file?: File) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
   const slideOptions: number[] = [];
   for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
 
-  useEffect(() => {
-    if (!editorOpen || typeof document === "undefined") return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [editorOpen]);
-
   return (
-    <div className="rounded-lg border border-stone-200 bg-stone-50 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <label className="text-[11px] text-stone-500">Spine slide</label>
+    <div className="rounded-lg border border-stone-200/80 bg-stone-50/50 px-3 py-2.5">
+      {/* Header row: slide picker + upload button + remove */}
+      <div className="flex items-center gap-2 mb-2">
         <select
           value={entry.sourceSlideNumber}
           onChange={(e) => onChange(entry.id, { sourceSlideNumber: Number(e.target.value) })}
-          className="px-2 py-1 border border-stone-200 rounded-lg text-[11px] focus:outline-none focus:ring-1 focus:ring-stone-200"
+          className="px-2 py-1 border border-stone-200 rounded text-[11px] bg-white focus:outline-none focus:ring-1 focus:ring-stone-300"
         >
           {slideOptions.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
+            <option key={n} value={n}>Slide {n}</option>
           ))}
         </select>
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onRemove(entry.id)}
-            className="text-[11px] text-red-500 hover:text-red-600 px-1"
-            title="Remove transcript row"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
 
-      <div className="flex items-center gap-2">
         <input
           ref={fileRef}
           type="file"
-          accept=".txt,.md,.doc,.docx,.rtf,.pdf,.csv,text/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/rtf,application/pdf"
+          accept=".txt,.md"
           className="hidden"
           onChange={(e) => void onFileSelect(entry.id, e.target.files?.[0])}
         />
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          className="text-[11px] px-2.5 py-1.5 rounded border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-stone-200 bg-white text-stone-500 hover:text-stone-700 hover:border-stone-300 transition-colors"
         >
-          Upload transcript file
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          {entry.fileName ? entry.fileName : ".txt / .md"}
         </button>
-        <span className="text-[11px] text-stone-500">
-          {entry.fileName ? `${entry.fileName} (${entry.content.length} chars)` : "No file selected"}
-        </span>
+
+        <button
+          type="button"
+          onClick={() => onRemove(entry.id)}
+          className="ml-auto text-stone-300 hover:text-red-400 transition-colors"
+          title="Remove"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
       </div>
 
-      <div className="rounded-lg border border-stone-200 bg-white p-2.5">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-medium text-stone-500">Transcript</span>
-          <button
-            type="button"
-            onClick={() => setEditorOpen(true)}
-            className="text-[11px] px-2 py-1 rounded border border-stone-200 text-stone-600 hover:bg-stone-50"
-          >
-            {entry.content.trim() ? "Edit" : "Add"}
-          </button>
-        </div>
-        <p className="text-[11px] text-stone-500 whitespace-pre-wrap max-h-20 overflow-y-auto">
-          {entry.content.trim() || "No transcript text yet."}
-        </p>
-      </div>
-      <p className="text-[10px] text-stone-400">
-        Source: {entry.mode === "file" ? "file upload" : "textbox/paste"}
-      </p>
-      {entry.parseError && <p className="text-[11px] text-red-600">{entry.parseError}</p>}
+      {/* Inline textarea */}
+      <textarea
+        value={entry.content}
+        onChange={(e) => onChange(entry.id, { content: e.target.value, parseError: undefined, mode: "textbox" })}
+        rows={3}
+        placeholder="Paste transcript text here..."
+        className="w-full text-[12px] text-stone-600 rounded border border-stone-200 bg-white px-2.5 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300"
+      />
 
-      {editorOpen && typeof document !== "undefined" &&
-        createPortal(
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl rounded-xl shadow-xl">
-              <div className="bg-white rounded-xl overflow-hidden ring-1 ring-stone-200 [clip-path:inset(0_round_0.75rem)]">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100">
-                  <div>
-                    <h3 className="text-sm font-semibold text-stone-800">Edit Transcript</h3>
-                    <p className="text-[11px] text-stone-500">Spine slide {entry.sourceSlideNumber}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditorOpen(false)}
-                    className="text-stone-400 hover:text-stone-700"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="p-4">
-                  <textarea
-                    value={entry.content}
-                    onChange={(e) =>
-                      onChange(entry.id, {
-                        content: e.target.value,
-                        parseError: undefined,
-                        mode: "textbox",
-                      })
-                    }
-                    rows={16}
-                    placeholder="Paste transcript text here..."
-                    className="w-full text-[13px] rounded-lg border border-stone-200 px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300"
-                  />
-                </div>
-                <div className="px-4 py-3 border-t border-stone-100 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setEditorOpen(false)}
-                    className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[12px] hover:bg-stone-800"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      {entry.parseError && <p className="text-[11px] text-red-500 mt-1">{entry.parseError}</p>}
     </div>
   );
 }
