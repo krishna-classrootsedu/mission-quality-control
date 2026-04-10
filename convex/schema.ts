@@ -188,6 +188,9 @@ export default defineSchema({
     sourceSlideNumber: v.optional(v.number()), // original number in source PPTX
     morphPairWith: v.optional(v.number()), // slide number of morph partner
     metadata: v.optional(v.any()),
+    videoTranscript: v.optional(v.string()),
+    videoTranscriptSource: v.optional(v.string()), // "file" | "textbox"
+    videoTranscriptUpdatedAt: v.optional(v.string()),
     agentName: v.string(),
     createdAt: v.string(),
   })

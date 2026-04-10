@@ -379,6 +379,11 @@ export const submitModuleWithFlow = mutation({
       metadata: v.optional(v.any()),
       thumbnailStorageId: v.optional(v.id("_storage")),
     })),
+    videoTranscripts: v.optional(v.array(v.object({
+      sourceSlideNumber: v.number(),
+      content: v.string(),
+      source: v.string(),
+    }))),
   },
   handler: async (ctx, args) => {
     const user = await requireAnyRole(ctx, [
@@ -399,6 +404,13 @@ export const submitModuleWithFlow = mutation({
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
 
     const totalSlides = args.slides.length;
+    const transcriptMap = new Map<number, { content: string; source: string }>();
+    for (const t of args.videoTranscripts ?? []) {
+      const content = t.content.trim();
+      if (!content) continue;
+      if (t.sourceSlideNumber < 1) continue;
+      transcriptMap.set(t.sourceSlideNumber, { content, source: t.source });
+    }
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId,
       title: args.title,
@@ -427,6 +439,10 @@ export const submitModuleWithFlow = mutation({
 
     // Batch-insert parsed slides
     for (const slide of args.slides) {
+      const transcript =
+        slide.sourceFile === "spine"
+          ? transcriptMap.get(slide.sourceSlideNumber)
+          : undefined;
       await ctx.db.insert("parsedSlides", {
         moduleId,
         version: 1,
@@ -441,6 +457,9 @@ export const submitModuleWithFlow = mutation({
         morphPairWith: slide.morphPairWith,
         metadata: slide.metadata,
         thumbnailStorageId: slide.thumbnailStorageId,
+        videoTranscript: transcript?.content,
+        videoTranscriptSource: transcript?.source,
+        videoTranscriptUpdatedAt: transcript ? now : undefined,
         agentName: "upload-ui",
         createdAt: now,
       });
@@ -729,6 +748,35 @@ export const markShipReady = mutation({
   },
 });
 
+export const updateTitle = mutation({
+  args: {
+    moduleId: v.string(),
+    version: v.number(),
+    title: v.string(),
+  },
+  handler: async (ctx, { moduleId, version, title }) => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) throw new Error("Title cannot be empty");
+    await requireAnyRole(ctx, [ROLES.MANAGER, ROLES.ADMIN]);
+    const allowed = await canAccessModule(ctx, moduleId);
+    if (!allowed) throw new Error("Forbidden: no module access");
+
+    const allVersions = await ctx.db
+      .query("modules")
+      .withIndex("by_moduleId", (q) => q.eq("moduleId", moduleId))
+      .collect();
+    const match = allVersions.find((m) => m.version === version && !m.deleted);
+    if (!match) throw new Error(`Module not found: ${moduleId} v${version}`);
+
+    await ctx.db.patch(match._id, {
+      title: trimmedTitle,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return { success: true, title: trimmedTitle };
+  },
+});
+
 // Modules eligible for corrections submission (vinay_reviewed or creator_fixing)
 export const correctableModules = query({
   args: {},
@@ -803,6 +851,11 @@ export const submitCorrections = mutation({
       metadata: v.optional(v.any()),
       thumbnailStorageId: v.optional(v.id("_storage")),
     })),
+    videoTranscripts: v.optional(v.array(v.object({
+      sourceSlideNumber: v.number(),
+      content: v.string(),
+      source: v.string(),
+    }))),
   },
   handler: async (ctx, args) => {
     const user = await requireAnyRole(ctx, [
@@ -833,6 +886,13 @@ export const submitCorrections = mutation({
     const newVersion = existing.version + 1;
     const totalApplets = args.sourceFiles.filter((f) => f.type === "applet").length;
     const totalSlides = args.slides.length;
+    const transcriptMap = new Map<number, { content: string; source: string }>();
+    for (const t of args.videoTranscripts ?? []) {
+      const content = t.content.trim();
+      if (!content) continue;
+      if (t.sourceSlideNumber < 1) continue;
+      transcriptMap.set(t.sourceSlideNumber, { content, source: t.source });
+    }
 
     const moduleDocId = await ctx.db.insert("modules", {
       moduleId: args.moduleId,
@@ -861,6 +921,10 @@ export const submitCorrections = mutation({
 
     // Batch-insert parsed slides
     for (const slide of args.slides) {
+      const transcript =
+        slide.sourceFile === "spine"
+          ? transcriptMap.get(slide.sourceSlideNumber)
+          : undefined;
       await ctx.db.insert("parsedSlides", {
         moduleId: args.moduleId,
         version: newVersion,
@@ -875,6 +939,9 @@ export const submitCorrections = mutation({
         morphPairWith: slide.morphPairWith,
         metadata: slide.metadata,
         thumbnailStorageId: slide.thumbnailStorageId,
+        videoTranscript: transcript?.content,
+        videoTranscriptSource: transcript?.source,
+        videoTranscriptUpdatedAt: transcript ? now : undefined,
         agentName: "upload-ui",
         createdAt: now,
       });

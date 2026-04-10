@@ -12,10 +12,6 @@ import {
 } from "@/lib/moduleFlow";
 
 const GRADES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const TOPICS = [
-  "Fractions", "Decimals", "Geometry", "Measurement",
-  "Data Handling", "Whole Numbers", "Algebra", "Other",
-];
 
 type ParsedFile = {
   file: File;
@@ -29,6 +25,23 @@ type AppletEntry = {
   afterSpineSlide: number;
   parsed: ParsedFile | null;
 };
+
+type TranscriptEntry = {
+  id: string;
+  sourceSlideNumber: number;
+  mode: "textbox" | "file";
+  content: string;
+  fileName?: string;
+  parseError?: string;
+};
+
+async function readTranscriptFile(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+  if (!name.endsWith(".txt") && !name.endsWith(".md")) {
+    throw new Error("Only .txt and .md files are accepted for transcripts.");
+  }
+  return (await file.text()).trim();
+}
 
 function isAppletFile(name: string): boolean {
   return /^G\d+C\d+M\d+A\d+/i.test(name) || /[\s_-]A\d+[\s_.-]/i.test(name);
@@ -73,13 +86,13 @@ export default function UploadPage() {
   const [chapterNumber, setChapterNumber] = useState<number | "">("");
   const [chapterName, setChapterName] = useState("");
   const [moduleNumber, setModuleNumber] = useState<number | "">("");
-  const [topic, setTopic] = useState("");
   const [submittedBy, setSubmittedBy] = useState("");
   const [curriculumMode, setCurriculumMode] = useState<"auto" | "manual">("auto");
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculumMap"> | null>(null);
   const [curriculumFilled, setCurriculumFilled] = useState(false);
   const [spineParsed, setSpineParsed] = useState<ParsedFile | null>(null);
   const [applets, setApplets] = useState<AppletEntry[]>([]);
+  const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitProgress, setSubmitProgress] = useState("");
@@ -125,6 +138,60 @@ export default function UploadPage() {
   const spineSlideCount = spineParsed?.slides.length ?? 0;
   const spineReady = !!spineParsed && !spineParsed.parsing && spineParsed.slides.length > 0 && !spineParsed.error;
 
+  function addTranscriptRow() {
+    setTranscripts((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        sourceSlideNumber: 1,
+        mode: "textbox",
+        content: "",
+      },
+    ]);
+  }
+
+  function updateTranscriptRow(id: string, patch: Partial<TranscriptEntry>) {
+    setTranscripts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  function removeTranscriptRow(id: string) {
+    setTranscripts((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function handleTranscriptFileSelect(id: string, file?: File) {
+    if (!file) return;
+    try {
+      const content = await readTranscriptFile(file);
+      if (!content) {
+        updateTranscriptRow(id, { parseError: "File is empty.", fileName: file.name, content: "" });
+        return;
+      }
+      updateTranscriptRow(id, { mode: "file", fileName: file.name, parseError: undefined, content });
+    } catch (err) {
+      updateTranscriptRow(id, {
+        parseError: err instanceof Error ? err.message : "Failed to read file. Use .txt or .md only.",
+        fileName: file.name,
+      });
+    }
+  }
+
+  function validateTranscripts(): string | null {
+    const used = new Set<number>();
+    for (const t of transcripts) {
+      if (t.sourceSlideNumber < 1 || t.sourceSlideNumber > spineSlideCount) {
+        return `Transcript slide number must be between 1 and ${spineSlideCount}.`;
+      }
+      if (used.has(t.sourceSlideNumber)) {
+        return `Duplicate transcript for spine slide ${t.sourceSlideNumber}. Keep one transcript per slide.`;
+      }
+      used.add(t.sourceSlideNumber);
+      if (!t.content.trim()) {
+        return `Transcript content is empty for spine slide ${t.sourceSlideNumber}.`;
+      }
+    }
+    return null;
+  }
+
   async function parseFile(file: File): Promise<SourceSlide[]> {
     const uploadUrl = await generateUploadUrl();
     const uploadResult = await fetch(uploadUrl, {
@@ -164,6 +231,7 @@ export default function UploadPage() {
       return;
     }
     setError("");
+    setTranscripts([]);
     // Smart-fill from filename
     const match = f.name.match(/^G(\d+)C(\d+)M(\d+)/i);
     if (match) {
@@ -240,6 +308,10 @@ export default function UploadPage() {
     if (!spineParsed || submitting || submitted) return;
     setError(""); setSubmitting(true);
     try {
+      const transcriptValidationError = validateTranscripts();
+      if (transcriptValidationError) {
+        throw new Error(transcriptValidationError);
+      }
       setSubmitProgress("Uploading spine deck...");
       const uploadUrl = await generateUploadUrl();
       const uploadResult = await fetch(uploadUrl, {
@@ -265,11 +337,16 @@ export default function UploadPage() {
         morphPairWith: s.morphPairWith, metadata: s.metadata,
         thumbnailStorageId: s.thumbnailStorageId as Id<"_storage"> | undefined,
       }));
+      const videoTranscripts = transcripts.map((t) => ({
+        sourceSlideNumber: t.sourceSlideNumber,
+        content: t.content.trim(),
+        source: t.mode,
+      }));
 
       if (isCorrections && selectedModule) {
         setSubmitProgress("Submitting corrections...");
         const result = await submitCorrections({
-          moduleId: selectedModule.moduleId, sourceFiles, slides,
+          moduleId: selectedModule.moduleId, sourceFiles, slides, videoTranscripts,
         });
         setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
@@ -281,9 +358,8 @@ export default function UploadPage() {
           chapterNumber: chapterNumber !== "" ? chapterNumber : undefined,
           chapterName: chapterName.trim() || undefined,
           moduleNumber: moduleNumber !== "" ? moduleNumber : undefined,
-          topic: topic || undefined,
           curriculumEntryId: selectedCurriculumId ?? undefined,
-          submittedBy: submittedBy.trim(), sourceFiles, slides,
+          submittedBy: submittedBy.trim(), sourceFiles, slides, videoTranscripts,
         });
         setSubmitted(true);
         setSubmitProgress("Done! Redirecting...");
@@ -339,7 +415,7 @@ export default function UploadPage() {
       {/* Mode toggle */}
       <div className="flex gap-1 mb-4">
         <button
-          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          onClick={() => { setMode("new"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setTranscripts([]); setError(""); }}
           className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
             mode === "new" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
           }`}
@@ -347,7 +423,7 @@ export default function UploadPage() {
           New Module
         </button>
         <button
-          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setError(""); }}
+          onClick={() => { setMode("corrections"); setSelectedModule(null); setCorrGrade(""); setCorrChapter(""); setStep(1); setSpineParsed(null); setApplets([]); setTranscripts([]); setError(""); }}
           className={`px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
             mode === "corrections" ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
           }`}
@@ -590,15 +666,6 @@ export default function UploadPage() {
                     className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 resize-none transition-shadow" />
                 </div>
 
-                {/* Row 5: Topic (optional) */}
-                <div className="max-w-[50%]">
-                  <label className="block text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em] mb-0.5">Topic</label>
-                  <select value={topic} onChange={(e) => setTopic(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-stone-200 rounded-lg text-[13px] h-9 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
-                    <option value="">Select...</option>
-                    {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
               </div>
             </>
           )}
@@ -648,6 +715,47 @@ export default function UploadPage() {
               )}
             </div>
           </div>
+
+          {/* Transcript attachment — inline under spine success */}
+          {spineReady && (
+            <div className="mx-4 mb-1">
+              {transcripts.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={addTranscriptRow}
+                  className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-stone-600 transition-colors py-1"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  Attach video transcripts
+                </button>
+              ) : (
+                <div className="space-y-2 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.08em]">Video Transcripts</span>
+                    <button
+                      type="button"
+                      onClick={addTranscriptRow}
+                      className="text-[11px] text-stone-400 hover:text-stone-600 transition-colors"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {transcripts.map((t) => (
+                    <TranscriptRow
+                      key={t.id}
+                      entry={t}
+                      spineSlideCount={spineSlideCount}
+                      onChange={updateTranscriptRow}
+                      onRemove={removeTranscriptRow}
+                      onFileSelect={handleTranscriptFileSelect}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -755,10 +863,6 @@ export default function UploadPage() {
                       <div className="text-[10px] text-stone-400 uppercase tracking-wide">Hierarchy</div>
                       <div className="text-[13px] text-stone-600">G{grade} &middot; Ch{chapterNumber}{chapterName ? ` — ${chapterName}` : ""} &middot; M{moduleNumber}</div>
                     </div>
-                    {topic && <div>
-                      <div className="text-[10px] text-stone-400 uppercase tracking-wide">Topic</div>
-                      <div className="text-[13px] text-stone-600">{topic}</div>
-                    </div>}
                     <div>
                       <div className="text-[10px] text-stone-400 uppercase tracking-wide">Submitted by</div>
                       <div className="text-[13px] text-stone-600">{submittedBy}</div>
@@ -879,6 +983,81 @@ function AppletRow({ applet, index, spineSlideCount, onFileSelect, onPositionCha
           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function TranscriptRow({
+  entry,
+  spineSlideCount,
+  onChange,
+  onRemove,
+  onFileSelect,
+}: {
+  entry: TranscriptEntry;
+  spineSlideCount: number;
+  onChange: (id: string, patch: Partial<TranscriptEntry>) => void;
+  onRemove: (id: string) => void;
+  onFileSelect: (id: string, file?: File) => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const slideOptions: number[] = [];
+  for (let i = 1; i <= spineSlideCount; i++) slideOptions.push(i);
+
+  return (
+    <div className="rounded-lg border border-stone-200/80 bg-stone-50/50 px-3 py-2.5">
+      {/* Header row: slide picker + upload button + remove */}
+      <div className="flex items-center gap-2 mb-2">
+        <select
+          value={entry.sourceSlideNumber}
+          onChange={(e) => onChange(entry.id, { sourceSlideNumber: Number(e.target.value) })}
+          className="px-2 py-1 border border-stone-200 rounded text-[11px] bg-white focus:outline-none focus:ring-1 focus:ring-stone-300"
+        >
+          {slideOptions.map((n) => (
+            <option key={n} value={n}>Slide {n}</option>
+          ))}
+        </select>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".txt,.md"
+          className="hidden"
+          onChange={(e) => void onFileSelect(entry.id, e.target.files?.[0])}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border border-stone-200 bg-white text-stone-500 hover:text-stone-700 hover:border-stone-300 transition-colors"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          {entry.fileName ? entry.fileName : ".txt / .md"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onRemove(entry.id)}
+          className="ml-auto text-stone-300 hover:text-red-400 transition-colors"
+          title="Remove"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Inline textarea */}
+      <textarea
+        value={entry.content}
+        onChange={(e) => onChange(entry.id, { content: e.target.value, parseError: undefined, mode: "textbox" })}
+        rows={3}
+        placeholder="Paste transcript text here..."
+        className="w-full text-[12px] text-stone-600 rounded border border-stone-200 bg-white px-2.5 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-stone-300 placeholder:text-stone-300"
+      />
+
+      {entry.parseError && <p className="text-[11px] text-red-500 mt-1">{entry.parseError}</p>}
     </div>
   );
 }
