@@ -482,7 +482,11 @@ http.route({
   }),
 });
 
-// Curriculum context for agents — all modules in a chapter with LOs
+// Curriculum context for agents — fetch the chapter context for a given moduleCode.
+// Used by Orchestrator to inject "what other modules in this chapter teach" into
+// reviewer agent prompts. Returns null if moduleCode is invalid or chapter has
+// no curriculum rows yet — caller treats null as "skip context, fall back to
+// current behavior".
 http.route({
   path: "/query/curriculum-context",
   method: "GET",
@@ -490,12 +494,9 @@ http.route({
     if (!validateAuth(request)) return jsonResponse({ error: "Unauthorized" }, 401);
     try {
       const url = new URL(request.url);
-      const gradeParam = url.searchParams.get("grade");
-      const chapterParam = url.searchParams.get("chapterNumber");
-      if (!gradeParam || !chapterParam) return jsonResponse({ error: "Missing grade or chapterNumber" }, 400);
-      const grade = parseInt(gradeParam, 10);
-      const chapterNumber = parseInt(chapterParam, 10);
-      const context = await ctx.runQuery(internal.curriculumMap.internalChapterContext, { grade, chapterNumber });
+      const moduleCode = url.searchParams.get("moduleCode");
+      if (!moduleCode) return jsonResponse({ error: "Missing moduleCode" }, 400);
+      const context = await ctx.runQuery(internal.curriculumMap.internalChapterContext, { moduleCode });
       return jsonResponse(context);
     } catch (error) {
       return errorResponse(error);

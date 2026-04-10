@@ -110,31 +110,61 @@ export const getByModuleCode = query({
 // INTERNAL QUERY (for HTTP endpoint — agent access)
 // ---------------------------------------------------------------------------
 
-// Chapter context for agents — all input rows in a chapter, ordered by moduleNumber
+// Chapter context for agents — input rows for the chapter that contains the
+// given moduleCode, ordered by moduleNumber. The row matching moduleCode is
+// flagged with `isTarget: true`. Chapter-level metadata (thread/strand/TP) is
+// hoisted out of the per-module rows so the orchestrator can render the header
+// once. Returns null if moduleCode parses but no rows exist for that chapter
+// (curriculum hasn't been uploaded yet) — caller treats null as "skip context
+// injection, fall back to current behavior".
 export const internalChapterContext = internalQuery({
-  args: { grade: v.number(), chapterNumber: v.number() },
-  handler: async (ctx, { grade, chapterNumber }) => {
+  args: { moduleCode: v.string() },
+  handler: async (ctx, { moduleCode }) => {
+    const normalized = normalizeModuleCode(moduleCode);
+    let parsed: { grade: number; chapterNumber: number; moduleNumber: number };
+    try {
+      parsed = parseModuleCode(normalized);
+    } catch {
+      // Caller passed something that doesn't match G{n}C{n}M{n} — return null
+      // so the orchestrator can fall back to no-context behavior gracefully.
+      return null;
+    }
+
     const rows = await ctx.db
       .query("curriculumMap")
       .withIndex("by_grade_chapter", (q) =>
-        q.eq("grade", grade).eq("chapterNumber", chapterNumber)
+        q.eq("grade", parsed.grade).eq("chapterNumber", parsed.chapterNumber)
       )
       .collect();
+
+    if (rows.length === 0) return null;
+
     const sorted = rows.sort((a, b) => a.moduleNumber - b.moduleNumber);
-    const chapterName =
-      sorted.find((r) => r.chapterName && r.chapterName.trim().length > 0)
-        ?.chapterName ?? null;
+
+    // Hoist chapter-level metadata: take the first non-empty value across rows.
+    // Vinay's CSV repeats these per row; using "first non-empty" is robust to
+    // partial data.
+    const pickFirst = (field: keyof typeof sorted[number]): string | null => {
+      for (const r of sorted) {
+        const v = r[field];
+        if (typeof v === "string" && v.trim().length > 0) return v;
+      }
+      return null;
+    };
+
     return {
-      grade,
-      chapterNumber,
-      chapterName,
+      targetModuleCode: normalized,
+      grade: parsed.grade,
+      chapterNumber: parsed.chapterNumber,
+      chapterName: pickFirst("chapterName"),
+      thread: pickFirst("thread"),
+      strand: pickFirst("strand"),
+      tpCode: pickFirst("tpCode"),
+      tpDescription: pickFirst("tpDescription"),
       modules: sorted.map((m) => ({
         moduleCode: m.moduleCode,
         moduleNumber: m.moduleNumber,
-        thread: m.thread ?? null,
-        strand: m.strand ?? null,
-        tpCode: m.tpCode ?? null,
-        tpDescription: m.tpDescription ?? null,
+        isTarget: m.moduleCode === normalized,
         conceptName: m.conceptName ?? null,
         conceptType: m.conceptType ?? null,
         conceptDescription: m.conceptDescription ?? null,
